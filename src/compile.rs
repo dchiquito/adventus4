@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tree_sitter::{InputEdit, Language, Node, Parser, Point, Tree, TreeCursor};
+use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 include!(concat!(env!("OUT_DIR"), "/grammar_ids.rs"));

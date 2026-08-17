@@ -17,7 +17,7 @@ fn get_ts_symbol_identifiers(parser: &str) -> Vec<[&str; 2]> {
 }
 
 fn write_id(buf: &mut String, name: &str, id: &str) {
-    writeln!(buf, "const {name}: u16 = {id};").unwrap();
+    writeln!(buf, "#[allow(unused)] const {name}: u16 = {id};").unwrap();
 }
 
 fn generate_ids() -> String {
