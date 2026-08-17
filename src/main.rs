@@ -1,7 +1,8 @@
 use adventus4::{compile::ByteCode, vm::VM};
 
 fn main() {
-    let source_code = "def mean [+ 2 /]
+    let source_code = "def mean:(int int -> int)  [+ 2 /]
+        def new : (-> int int) [1 2]
         def main [10 20 mean print]";
     let bytecode = ByteCode::compile(source_code);
     eprintln!("{bytecode:?}");

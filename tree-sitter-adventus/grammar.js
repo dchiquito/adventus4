@@ -13,7 +13,12 @@ export default grammar({
   rules: {
     source_file: $ => repeat($.def),
 
-    def: $ => seq("def", $.identifier, $.expression),
+    def: $ => seq(
+      "def",
+      $.identifier,
+      optional(seq(":", $.signature)),
+      $.expression,
+    ),
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
@@ -49,5 +54,20 @@ export default grammar({
       $.grouping,
       $.builtin,
     ),
+
+    docSignature: $ => seq("?", $.signature),
+    signature: $ => seq(
+      "(",
+      repeat($.type),
+      "->",
+      repeat($.type),
+      ")",
+    ),
+
+    type: $ => "int",
   },
+  extras: $ => [
+    /\s/,
+
+  ],
 });

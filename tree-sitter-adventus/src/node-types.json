@@ -45,6 +45,10 @@
         {
           "type": "identifier",
           "named": true
+        },
+        {
+          "type": "signature",
+          "named": true
         }
       ]
     }
@@ -111,6 +115,21 @@
     }
   },
   {
+    "type": "signature",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -125,6 +144,22 @@
         }
       ]
     }
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "->",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
   },
   {
     "type": "[",
@@ -168,6 +203,10 @@
   },
   {
     "type": "sub",
+    "named": true
+  },
+  {
+    "type": "type",
     "named": true
   }
 ]

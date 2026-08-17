@@ -139,6 +139,8 @@ impl<'a> Compiler<'a> {
             self.compile_def(&mut cursor);
             walked = cursor.goto_next_sibling();
         }
+        assert!(cursor.goto_parent());
+        assert_eq!(cursor.node(), root);
         self.bytecode
     }
     fn compile_def(&mut self, cursor: &mut TreeCursor) {
@@ -160,6 +162,11 @@ impl<'a> Compiler<'a> {
 
         eprintln!("Compiling def {name} ...");
         assert!(cursor.goto_next_sibling());
+        if cursor.node().grammar_id() != EXPRESSION {
+            // TODO ingest the signature
+            assert!(cursor.goto_next_sibling()); // :
+            assert!(cursor.goto_next_sibling()); // (...->...)
+        }
         self.compile_expression(cursor);
         assert!(cursor.goto_parent());
 
