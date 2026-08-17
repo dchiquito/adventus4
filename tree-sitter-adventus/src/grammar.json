@@ -24,15 +24,15 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SEQ",
+              "type": "CHOICE",
               "members": [
                 {
-                  "type": "STRING",
-                  "value": ":"
+                  "type": "SYMBOL",
+                  "name": "manual_signature"
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "signature"
+                  "name": "doc_signature"
                 }
               ]
             },
@@ -158,7 +158,20 @@
         }
       ]
     },
-    "docSignature": {
+    "manual_signature": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "signature"
+        }
+      ]
+    },
+    "doc_signature": {
       "type": "SEQ",
       "members": [
         {

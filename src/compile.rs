@@ -162,10 +162,10 @@ impl<'a> Compiler<'a> {
 
         eprintln!("Compiling def {name} ...");
         assert!(cursor.goto_next_sibling());
+        eprintln!("nod {:?}", cursor.node().grammar_name());
         if cursor.node().grammar_id() != EXPRESSION {
             // TODO ingest the signature
             assert!(cursor.goto_next_sibling()); // :
-            assert!(cursor.goto_next_sibling()); // (...->...)
         }
         self.compile_expression(cursor);
         assert!(cursor.goto_parent());

@@ -16,7 +16,7 @@ export default grammar({
     def: $ => seq(
       "def",
       $.identifier,
-      optional(seq(":", $.signature)),
+      optional(choice($.manual_signature, $.doc_signature)),
       $.expression,
     ),
 
@@ -55,7 +55,8 @@ export default grammar({
       $.builtin,
     ),
 
-    docSignature: $ => seq("?", $.signature),
+    manual_signature: $ => seq(":", $.signature),
+    doc_signature: $ => seq("?", $.signature),
     signature: $ => seq(
       "(",
       repeat($.type),
@@ -68,6 +69,5 @@ export default grammar({
   },
   extras: $ => [
     /\s/,
-
   ],
 });
