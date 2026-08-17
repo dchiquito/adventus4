@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tree-sitter = "0.26.12"
+tree-sitter-adventus = { version = "0.1.0", path = "tree-sitter-adventus" }
+
+[build-dependencies]
+regex = "1.13.1"

@@ -11,7 +11,43 @@ export default grammar({
   name: "adventus",
 
   rules: {
-    // TODO: add the actual grammar rules
-    source_file: $ => "hello"
-  }
+    source_file: $ => repeat($.def),
+
+    def: $ => seq("def", $.identifier, $.expression),
+
+    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+
+    positive_int: $ => /[1-9][0-9_]*/,
+    negative_int: $ => /-[1-9][0-9_]*/,
+    int: $ => choice(
+      $.positive_int,
+      $.negative_int,
+    ),
+
+    grouping: $ => seq(
+      "[",
+      repeat($.expression),
+      "]",
+    ),
+
+    add: $ => "+",
+    sub: $ => "-",
+    mul: $ => "*",
+    div: $ => "/",
+    print: $ => "print",
+    builtin: $ => choice(
+      $.add,
+      $.sub,
+      $.mul,
+      $.div,
+      $.print,
+    ),
+
+    expression: $ => choice(
+      $.identifier,
+      $.int,
+      $.grouping,
+      $.builtin,
+    ),
+  },
 });
