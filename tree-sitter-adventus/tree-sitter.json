@@ -1,0 +1,42 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "adventus",
+      "camelcase": "Adventus",
+      "title": "Adventus",
+      "scope": "source.adventus",
+      "file-types": [
+        "adv"
+      ],
+      "injection-regex": "^adventus$",
+      "class-name": "TreeSitterAdventus"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Adventus grammar for tree-sitter",
+    "authors": [
+      {
+        "name": "Daniel Chiquito",
+        "email": "daniel.chiquito@gmail.com",
+        "url": ""
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/dchiquito/adventus4",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "java": false,
+    "node": false,
+    "python": false,
+    "rust": true,
+    "swift": false,
+    "zig": false
+  }
+}
