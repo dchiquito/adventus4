@@ -89,33 +89,19 @@ impl ByteCode {
         Compiler::new(source).compile()
     }
 }
+
 struct Compiler<'a> {
     source: &'a str,
     bytecode: ByteCode,
-    current_def: Option<Definition>,
     def_map: HashMap<String, usize>,
-}
-macro_rules! compile_builtin_method {
-    ($method:ident, $lower:ident, $pascal:ident, $upper:ident) => {
-        fn $method(&mut self, cursor: &mut TreeCursor) {
-            assert_node_id!(cursor, $upper, stringify!($lower));
-            self.current_def
-                .as_mut()
-                .unwrap()
-                .data
-                .push(u64::from(OpCode::$pascal));
-        }
-    };
 }
 impl<'a> Compiler<'a> {
     fn new(source: &'a str) -> Self {
         let bytecode = ByteCode::default();
-        let current_def = None;
         let def_map = HashMap::default();
         Self {
             source,
             bytecode,
-            current_def,
             def_map,
         }
     }
@@ -157,20 +143,30 @@ impl<'a> Compiler<'a> {
             self.bytecode.main_id = Some(self.bytecode.defs.len());
         }
 
-        assert!(self.current_def.is_none());
-        self.current_def = Some(Definition::default());
-
-        eprintln!("Compiling def {name} ...");
+        let mut def_compiler = DefCompiler::new(self);
         assert!(cursor.goto_next_sibling());
-        eprintln!("nod {:?}", cursor.node().grammar_name());
+        def_compiler.compile_def(cursor);
+
+        self.bytecode.defs.push(def_compiler.def);
+    }
+}
+
+struct DefCompiler<'a> {
+    compiler: &'a Compiler<'a>,
+    def: Definition,
+}
+impl<'a> DefCompiler<'a> {
+    fn new(compiler: &'a Compiler) -> Self {
+        let def = Definition::default();
+        Self { compiler, def }
+    }
+    fn compile_def(&mut self, cursor: &mut TreeCursor) {
         if cursor.node().grammar_id() != EXPRESSION {
             // TODO ingest the signature
             assert!(cursor.goto_next_sibling()); // :
         }
         self.compile_expression(cursor);
         assert!(cursor.goto_parent());
-
-        self.bytecode.defs.push(self.current_def.take().unwrap());
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
@@ -181,19 +177,22 @@ impl<'a> Compiler<'a> {
             INT => self.compile_int(cursor),
             GROUPING => self.compile_grouping(cursor),
             BUILTIN => self.compile_builtin(cursor),
-            _ => unreachable!("{}", cursor.node().grammar_id()),
+            _ => unreachable!(
+                "{} ({})",
+                cursor.node().grammar_name(),
+                cursor.node().grammar_id()
+            ),
         }
         assert!(cursor.goto_parent());
     }
     fn compile_identifier(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IDENTIFIER, "identifier");
-        let string_repr = &self.source[cursor.node().byte_range()];
+        let string_repr = &self.compiler.source[cursor.node().byte_range()];
         eprintln!("id {string_repr}");
-        if let Some(&def_id) = self.def_map.get(string_repr) {
+        if let Some(&def_id) = self.compiler.def_map.get(string_repr) {
             eprintln!("Looked up {def_id}");
-            let def = self.current_def.as_mut().unwrap();
-            def.data.push(u64::from(OpCode::Call));
-            def.data.push(def_id as u64);
+            self.def.data.push(u64::from(OpCode::Call));
+            self.def.data.push(def_id as u64);
         } else {
             panic!("{string_repr} is undefined");
         }
@@ -204,13 +203,17 @@ impl<'a> Compiler<'a> {
         eprintln!("{:?}##int", cursor.node().grammar_name());
         match cursor.node().grammar_id() {
             POSITIVE_INT => self.compile_positive_int(cursor),
-            _ => unreachable!("{}", cursor.node().grammar_id()),
+            _ => unreachable!(
+                "{} ({})",
+                cursor.node().grammar_name(),
+                cursor.node().grammar_id()
+            ),
         }
         assert!(cursor.goto_parent());
     }
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
-        let string_repr = &self.source[cursor.node().byte_range()];
+        let string_repr = &self.compiler.source[cursor.node().byte_range()];
         eprintln!("int {:?}", string_repr);
         let int = string_repr
             .as_bytes()
@@ -218,9 +221,8 @@ impl<'a> Compiler<'a> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        let def = self.current_def.as_mut().unwrap();
-        def.data.push(u64::from(OpCode::Literal));
-        def.data.push(int as u64);
+        self.def.data.push(u64::from(OpCode::Literal));
+        self.def.data.push(int as u64);
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");
@@ -242,10 +244,24 @@ impl<'a> Compiler<'a> {
             MUL => self.compile_mul(cursor),
             DIV => self.compile_div(cursor),
             PRINT => self.compile_print(cursor),
-            _ => unreachable!("{}", cursor.node().grammar_id()),
+            _ => unreachable!(
+                "{} ({})",
+                cursor.node().grammar_name(),
+                cursor.node().grammar_id()
+            ),
         }
         assert!(cursor.goto_parent());
     }
+
+macro_rules! compile_builtin_method {
+    ($method:ident, $lower:ident, $pascal:ident, $upper:ident) => {
+        fn $method(&mut self, cursor: &mut TreeCursor) {
+            assert_node_id!(cursor, $upper, stringify!($lower));
+            self.def.data.push(u64::from(OpCode::$pascal));
+        }
+    };
+}
+impl<'a> DefCompiler<'a> {
     compile_builtin_method!(compile_add, add, Add, ADD);
     compile_builtin_method!(compile_sub, sub, Sub, SUB);
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
