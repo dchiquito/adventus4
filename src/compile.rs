@@ -27,6 +27,8 @@ pub enum OpCode {
     Return,
     Dup,
     Swap,
+    BindLocal,
+    PushLocal,
     Add,
     Sub,
     Mul,
@@ -43,11 +45,13 @@ impl TryFrom<u64> for OpCode {
             0x3 => OpCode::Return,
             0x10 => OpCode::Dup,
             0x11 => OpCode::Swap,
-            0x20 => OpCode::Add,
-            0x21 => OpCode::Sub,
-            0x22 => OpCode::Mul,
-            0x23 => OpCode::Div,
-            0x30 => OpCode::Print,
+            0x20 => OpCode::BindLocal,
+            0x21 => OpCode::PushLocal,
+            0x30 => OpCode::Add,
+            0x31 => OpCode::Sub,
+            0x32 => OpCode::Mul,
+            0x33 => OpCode::Div,
+            0x40 => OpCode::Print,
             _ => return Err(value),
         })
     }
@@ -60,11 +64,13 @@ impl From<OpCode> for u64 {
             OpCode::Return => 0x3,
             OpCode::Dup => 0x10,
             OpCode::Swap => 0x11,
-            OpCode::Add => 0x20,
-            OpCode::Sub => 0x21,
-            OpCode::Mul => 0x22,
-            OpCode::Div => 0x23,
-            OpCode::Print => 0x30,
+            OpCode::BindLocal => 0x20,
+            OpCode::PushLocal => 0x21,
+            OpCode::Add => 0x30,
+            OpCode::Sub => 0x31,
+            OpCode::Mul => 0x32,
+            OpCode::Div => 0x33,
+            OpCode::Print => 0x40,
         }
     }
 }
@@ -72,10 +78,14 @@ impl From<OpCode> for u64 {
 #[derive(Debug, Default)]
 pub struct Definition {
     data: Vec<u64>,
+    local_size: usize,
 }
 impl Definition {
     pub fn read_word(&self, pc: usize) -> Option<u64> {
         self.data.get(pc).copied()
+    }
+    pub fn initialize_locals(&self) -> Vec<i64> {
+        vec![0; self.local_size]
     }
 }
 
@@ -154,11 +164,17 @@ impl<'a> Compiler<'a> {
 struct DefCompiler<'a> {
     compiler: &'a Compiler<'a>,
     def: Definition,
+    local_map: HashMap<String, usize>,
 }
 impl<'a> DefCompiler<'a> {
     fn new(compiler: &'a Compiler) -> Self {
         let def = Definition::default();
-        Self { compiler, def }
+        let local_map = HashMap::default();
+        Self {
+            compiler,
+            def,
+            local_map,
+        }
     }
     fn compile_def(&mut self, cursor: &mut TreeCursor) {
         if cursor.node().grammar_id() != EXPRESSION {
@@ -177,6 +193,8 @@ impl<'a> DefCompiler<'a> {
             INT => self.compile_int(cursor),
             GROUPING => self.compile_grouping(cursor),
             BUILTIN => self.compile_builtin(cursor),
+            LOCAL_BIND => self.compile_local_bind(cursor),
+            LOCAL_VAR => self.compile_local_var(cursor),
             _ => unreachable!(
                 "{} ({})",
                 cursor.node().grammar_name(),
@@ -252,6 +270,40 @@ impl<'a> DefCompiler<'a> {
         }
         assert!(cursor.goto_parent());
     }
+    fn compile_local_bind(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, LOCAL_BIND, "local_bind");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        let local_name = &self.compiler.source[cursor.node().byte_range()];
+        eprintln!("  lb {:?}", local_name);
+        let local_id = if let Some(id) = self.local_map.get(local_name) {
+            *id
+        } else {
+            let id = self.def.local_size;
+            self.local_map.insert(local_name.to_string(), id);
+            self.def.local_size += 1;
+            id
+        };
+        self.def.data.push(u64::from(OpCode::BindLocal));
+        self.def.data.push(local_id as u64);
+
+        assert!(cursor.goto_parent());
+    }
+    fn compile_local_var(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, LOCAL_VAR, "local_var");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        let local_name = &self.compiler.source[cursor.node().byte_range()];
+        eprintln!("  lv {:?}", local_name);
+        let local_id = self
+            .local_map
+            .get(local_name)
+            .unwrap_or_else(|| panic!("local {local_name} is unbound"));
+        self.def.data.push(u64::from(OpCode::PushLocal));
+        self.def.data.push(*local_id as u64);
+        assert!(cursor.goto_parent());
+    }
+}
 
 macro_rules! compile_builtin_method {
     ($method:ident, $lower:ident, $pascal:ident, $upper:ident) => {

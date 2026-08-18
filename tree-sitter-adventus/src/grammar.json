@@ -137,6 +137,32 @@
         }
       ]
     },
+    "local_bind": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": ">$"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        }
+      ]
+    },
+    "local_var": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "$"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        }
+      ]
+    },
     "expression": {
       "type": "CHOICE",
       "members": [
@@ -155,6 +181,14 @@
         {
           "type": "SYMBOL",
           "name": "builtin"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "local_bind"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "local_var"
         }
       ]
     },

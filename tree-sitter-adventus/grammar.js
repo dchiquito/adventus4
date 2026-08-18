@@ -48,11 +48,16 @@ export default grammar({
       $.print,
     ),
 
+    local_bind: $ => seq(">$", $.identifier),
+    local_var: $ => seq("$", $.identifier),
+
     expression: $ => choice(
       $.identifier,
       $.int,
       $.grouping,
       $.builtin,
+      $.local_bind,
+      $.local_var,
     ),
 
     manual_signature: $ => seq(":", $.signature),

@@ -95,6 +95,14 @@
         {
           "type": "int",
           "named": true
+        },
+        {
+          "type": "local_bind",
+          "named": true
+        },
+        {
+          "type": "local_var",
+          "named": true
         }
       ]
     }
@@ -128,6 +136,36 @@
         },
         {
           "type": "positive_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "local_bind",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "local_var",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
           "named": true
         }
       ]
@@ -180,6 +218,10 @@
     }
   },
   {
+    "type": "$",
+    "named": false
+  },
+  {
     "type": "(",
     "named": false
   },
@@ -193,6 +235,10 @@
   },
   {
     "type": ":",
+    "named": false
+  },
+  {
+    "type": ">$",
     "named": false
   },
   {
