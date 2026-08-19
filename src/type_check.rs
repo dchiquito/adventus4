@@ -82,6 +82,8 @@ impl Types {
                 OpCode::Lt => stack_mutation!(Int Int=>Bool),
                 OpCode::Gte => stack_mutation!(Int Int=>Bool),
                 OpCode::Lte => stack_mutation!(Int Int=>Bool),
+                OpCode::And => stack_mutation!(Bool Bool=>Bool),
+                OpCode::Or => stack_mutation!(Bool Bool=>Bool),
                 OpCode::Not => stack_mutation!(Bool=>Bool),
                 OpCode::Print => stack_mutation!(Int=>Int),
             };

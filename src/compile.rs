@@ -207,6 +207,8 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             LT => self.compile_lt(cursor),
             GTE => self.compile_gte(cursor),
             LTE => self.compile_lte(cursor),
+            AND => self.compile_and(cursor),
+            OR => self.compile_or(cursor),
             NOT => self.compile_not(cursor),
             PRINT => self.compile_print(cursor),
             _ => unreachable!(
@@ -298,6 +300,8 @@ impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_lt, lt, Lt, LT);
     compile_builtin_method!(compile_gte, gte, Gte, GTE);
     compile_builtin_method!(compile_lte, lte, Lte, LTE);
+    compile_builtin_method!(compile_and, and, And, AND);
+    compile_builtin_method!(compile_or, or, Or, OR);
     compile_builtin_method!(compile_not, not, Not, NOT);
     compile_builtin_method!(compile_print, print, Print, PRINT);
 }

@@ -19,6 +19,8 @@ pub enum OpCode {
     Lt,
     Gte,
     Lte,
+    And,
+    Or,
     Not,
     Print,
 }
@@ -46,7 +48,9 @@ impl TryFrom<u64> for OpCode {
             0x43 => OpCode::Lt,
             0x44 => OpCode::Gte,
             0x45 => OpCode::Lte,
-            0x46 => OpCode::Not,
+            0x46 => OpCode::And,
+            0x47 => OpCode::Or,
+            0x48 => OpCode::Not,
             0x50 => OpCode::Print,
             _ => return Err(value),
         })
@@ -74,7 +78,9 @@ impl From<OpCode> for u64 {
             OpCode::Lt => 0x43,
             OpCode::Gte => 0x44,
             OpCode::Lte => 0x45,
-            OpCode::Not => 0x46,
+            OpCode::And => 0x46,
+            OpCode::Or => 0x47,
+            OpCode::Not => 0x48,
             OpCode::Print => 0x50,
         }
     }
@@ -101,6 +107,8 @@ pub enum Op {
     Lt,
     Gte,
     Lte,
+    And,
+    Or,
     Not,
     Print,
 }
@@ -126,6 +134,8 @@ impl From<Op> for OpCode {
             Op::Lt => OpCode::Lt,
             Op::Gte => OpCode::Gte,
             Op::Lte => OpCode::Lte,
+            Op::And => OpCode::And,
+            Op::Or => OpCode::Or,
             Op::Not => OpCode::Not,
             Op::Print => OpCode::Print,
         }
@@ -194,6 +204,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Lt => Op::Lt,
             OpCode::Gte => Op::Gte,
             OpCode::Lte => Op::Lte,
+            OpCode::And => Op::And,
+            OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
         };

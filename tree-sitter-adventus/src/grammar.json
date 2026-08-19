@@ -136,9 +136,17 @@
       "type": "STRING",
       "value": "<="
     },
+    "and": {
+      "type": "STRING",
+      "value": "and"
+    },
+    "or": {
+      "type": "STRING",
+      "value": "or"
+    },
     "not": {
       "type": "STRING",
-      "value": "~"
+      "value": "not"
     },
     "print": {
       "type": "STRING",
@@ -194,6 +202,14 @@
         {
           "type": "SYMBOL",
           "name": "lte"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "and"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "or"
         },
         {
           "type": "SYMBOL",

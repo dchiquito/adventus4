@@ -12,6 +12,10 @@
           "named": true
         },
         {
+          "type": "and",
+          "named": true
+        },
+        {
           "type": "div",
           "named": true
         },
@@ -49,6 +53,10 @@
         },
         {
           "type": "not",
+          "named": true
+        },
+        {
+          "type": "or",
           "named": true
         },
         {
@@ -326,6 +334,10 @@
     "named": true
   },
   {
+    "type": "and",
+    "named": true
+  },
+  {
     "type": "def",
     "named": false
   },
@@ -383,6 +395,10 @@
   },
   {
     "type": "not",
+    "named": true
+  },
+  {
+    "type": "or",
     "named": true
   },
   {

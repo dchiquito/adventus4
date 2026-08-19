@@ -1,3 +1,9 @@
 def rebind_add +
 
-def main [1 2 + dup 3 >= ~ if 666 else 777 print]
+def main [
+  1 1 == >$t
+  $t not >$f
+  $f $f or print
+  if 666 else 777
+  print
+]
