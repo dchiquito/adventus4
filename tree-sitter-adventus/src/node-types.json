@@ -218,6 +218,11 @@
     }
   },
   {
+    "type": "type",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "$",
     "named": false
   },
@@ -243,6 +248,14 @@
   },
   {
     "type": "?",
+    "named": false
+  },
+  {
+    "type": "Char",
+    "named": false
+  },
+  {
+    "type": "Int",
     "named": false
   },
   {
@@ -287,10 +300,6 @@
   },
   {
     "type": "sub",
-    "named": true
-  },
-  {
-    "type": "type",
     "named": true
   }
 ]

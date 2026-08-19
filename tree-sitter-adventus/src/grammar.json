@@ -250,8 +250,17 @@
       ]
     },
     "type": {
-      "type": "STRING",
-      "value": "int"
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "Int"
+        },
+        {
+          "type": "STRING",
+          "value": "Char"
+        }
+      ]
     }
   },
   "extras": [

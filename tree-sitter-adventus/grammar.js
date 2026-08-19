@@ -70,7 +70,10 @@ export default grammar({
       ")",
     ),
 
-    type: $ => "int",
+    type: $ => choice(
+      "Int",
+      "Char",
+    ),
   },
   extras: $ => [
     /\s/,
