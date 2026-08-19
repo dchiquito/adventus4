@@ -1,4 +1,4 @@
-use crate::compile::{ByteCode, Definition, OpCode};
+use crate::bytecode::{ByteCode, Definition, OpCode};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
@@ -59,29 +59,16 @@ impl Types {
     }
     fn infer_def(&self, def: &Definition) -> StackMutation {
         let mut def_type = stack_mutation!(=>);
-        let mut i = 0;
-        while let Some(word) = def.read_word(i) {
-            let op = OpCode::try_from(word).unwrap();
+        for op in def.iter() {
+            let op = OpCode::from(op);
             let sm = match op {
-                OpCode::Literal => {
-                    i += 1;
-                    stack_mutation!(=>Int)
-                }
-                OpCode::Call => {
-                    i += 1;
-                    todo!()
-                }
+                OpCode::Literal => stack_mutation!(=>Int),
+                OpCode::Call => todo!(),
                 OpCode::Return => stack_mutation!(=>),
                 OpCode::Dup => stack_mutation!(Int=>Int Int),
                 OpCode::Swap => stack_mutation!(Int Int=>Int Int),
-                OpCode::BindLocal => {
-                    i += 1;
-                    stack_mutation!(Int=>)
-                }
-                OpCode::PushLocal => {
-                    i += 1;
-                    stack_mutation!(=>Int)
-                }
+                OpCode::BindLocal => stack_mutation!(Int=>),
+                OpCode::PushLocal => stack_mutation!(=>Int),
                 OpCode::Add => stack_mutation!(Int Int=>Int),
                 OpCode::Sub => stack_mutation!(Int Int=>Int),
                 OpCode::Mul => stack_mutation!(Int Int=>Int),
@@ -89,7 +76,6 @@ impl Types {
                 OpCode::Print => stack_mutation!(Int=>Int),
             };
             def_type = def_type.chain(&sm);
-            i += 1;
         }
         def_type
     }

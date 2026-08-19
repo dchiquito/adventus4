@@ -1,3 +1,4 @@
+pub mod bytecode;
 pub mod compile;
-pub mod vm;
 pub mod type_check;
+pub mod vm;

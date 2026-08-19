@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
+use crate::bytecode::{ByteCode, Definition, Op, OpCode};
+
 include!(concat!(env!("OUT_DIR"), "/grammar_ids.rs"));
 
 macro_rules! assert_node_id {
@@ -21,92 +23,13 @@ macro_rules! assert_node_id {
     };
 }
 
-pub enum OpCode {
-    Literal,
-    Call,
-    Return,
-    Dup,
-    Swap,
-    BindLocal,
-    PushLocal,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Print,
-}
-impl TryFrom<u64> for OpCode {
-    type Error = u64;
-
-    fn try_from(value: u64) -> Result<Self, Self::Error> {
-        Ok(match value {
-            0x1 => OpCode::Literal,
-            0x2 => OpCode::Call,
-            0x3 => OpCode::Return,
-            0x10 => OpCode::Dup,
-            0x11 => OpCode::Swap,
-            0x20 => OpCode::BindLocal,
-            0x21 => OpCode::PushLocal,
-            0x30 => OpCode::Add,
-            0x31 => OpCode::Sub,
-            0x32 => OpCode::Mul,
-            0x33 => OpCode::Div,
-            0x40 => OpCode::Print,
-            _ => return Err(value),
-        })
-    }
-}
-impl From<OpCode> for u64 {
-    fn from(value: OpCode) -> Self {
-        match value {
-            OpCode::Literal => 0x1,
-            OpCode::Call => 0x2,
-            OpCode::Return => 0x3,
-            OpCode::Dup => 0x10,
-            OpCode::Swap => 0x11,
-            OpCode::BindLocal => 0x20,
-            OpCode::PushLocal => 0x21,
-            OpCode::Add => 0x30,
-            OpCode::Sub => 0x31,
-            OpCode::Mul => 0x32,
-            OpCode::Div => 0x33,
-            OpCode::Print => 0x40,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Definition {
-    data: Vec<u64>,
-    local_size: usize,
-}
-impl Definition {
-    pub fn read_word(&self, pc: usize) -> Option<u64> {
-        self.data.get(pc).copied()
-    }
-    pub fn initialize_locals(&self) -> Vec<i64> {
-        vec![0; self.local_size]
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct ByteCode {
-    pub defs: Vec<Definition>,
-    pub main_id: Option<usize>,
-}
-impl ByteCode {
-    pub fn compile(source: &str) -> ByteCode {
-        Compiler::new(source).compile()
-    }
-}
-
-struct Compiler<'a> {
+pub struct Compiler<'a> {
     source: &'a str,
     bytecode: ByteCode,
     def_map: HashMap<String, usize>,
 }
 impl<'a> Compiler<'a> {
-    fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str) -> Self {
         let bytecode = ByteCode::default();
         let def_map = HashMap::default();
         Self {
@@ -124,7 +47,7 @@ impl<'a> Compiler<'a> {
         parser.parse(self.source, None).unwrap()
     }
 
-    fn compile(mut self) -> ByteCode {
+    pub fn compile(mut self) -> ByteCode {
         let tree = self.parse_tree();
         let root = tree.root_node();
         eprintln!("{root:?}");
@@ -209,8 +132,7 @@ impl<'a> DefCompiler<'a> {
         eprintln!("id {string_repr}");
         if let Some(&def_id) = self.compiler.def_map.get(string_repr) {
             eprintln!("Looked up {def_id}");
-            self.def.data.push(u64::from(OpCode::Call));
-            self.def.data.push(def_id as u64);
+            self.def.push(Op::Call(def_id));
         } else {
             panic!("{string_repr} is undefined");
         }
@@ -239,8 +161,7 @@ impl<'a> DefCompiler<'a> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.def.data.push(u64::from(OpCode::Literal));
-        self.def.data.push(int as u64);
+        self.def.push(Op::Literal(int));
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");
@@ -279,13 +200,12 @@ impl<'a> DefCompiler<'a> {
         let local_id = if let Some(id) = self.local_map.get(local_name) {
             *id
         } else {
-            let id = self.def.local_size;
+            let id = self.def.get_local_size();
             self.local_map.insert(local_name.to_string(), id);
-            self.def.local_size += 1;
+            self.def.incr_local_size();
             id
         };
-        self.def.data.push(u64::from(OpCode::BindLocal));
-        self.def.data.push(local_id as u64);
+        self.def.push(Op::BindLocal(local_id));
 
         assert!(cursor.goto_parent());
     }
@@ -299,8 +219,7 @@ impl<'a> DefCompiler<'a> {
             .local_map
             .get(local_name)
             .unwrap_or_else(|| panic!("local {local_name} is unbound"));
-        self.def.data.push(u64::from(OpCode::PushLocal));
-        self.def.data.push(*local_id as u64);
+        self.def.push(Op::PushLocal(*local_id));
         assert!(cursor.goto_parent());
     }
 }
@@ -309,7 +228,7 @@ macro_rules! compile_builtin_method {
     ($method:ident, $lower:ident, $pascal:ident, $upper:ident) => {
         fn $method(&mut self, cursor: &mut TreeCursor) {
             assert_node_id!(cursor, $upper, stringify!($lower));
-            self.def.data.push(u64::from(OpCode::$pascal));
+            self.def.push(Op::$pascal);
         }
     };
 }
@@ -319,18 +238,4 @@ impl<'a> DefCompiler<'a> {
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
     compile_builtin_method!(compile_div, div, Div, DIV);
     compile_builtin_method!(compile_print, print, Print, PRINT);
-}
-
-#[cfg(test)]
-mod test_opcodes {
-    use super::*;
-
-    #[test]
-    fn test_u64_to_opcode() {
-        for i in 0..255 {
-            if let Ok(op) = OpCode::try_from(i) {
-                assert_eq!(i, u64::from(op));
-            }
-        }
-    }
 }
