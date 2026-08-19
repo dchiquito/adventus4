@@ -47,10 +47,6 @@
         }
       ]
     },
-    "identifier": {
-      "type": "PATTERN",
-      "value": "[a-zA-Z_][a-zA-Z0-9_]*"
-    },
     "positive_int": {
       "type": "PATTERN",
       "value": "[1-9][0-9_]*"
@@ -92,6 +88,14 @@
         }
       ]
     },
+    "dup": {
+      "type": "STRING",
+      "value": "dup"
+    },
+    "swap": {
+      "type": "STRING",
+      "value": "swap"
+    },
     "add": {
       "type": "STRING",
       "value": "+"
@@ -108,6 +112,10 @@
       "type": "STRING",
       "value": "/"
     },
+    "eq": {
+      "type": "STRING",
+      "value": "=="
+    },
     "print": {
       "type": "STRING",
       "value": "print"
@@ -115,6 +123,14 @@
     "builtin": {
       "type": "CHOICE",
       "members": [
+        {
+          "type": "SYMBOL",
+          "name": "dup"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "swap"
+        },
         {
           "type": "SYMBOL",
           "name": "add"
@@ -130,6 +146,10 @@
         {
           "type": "SYMBOL",
           "name": "div"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "eq"
         },
         {
           "type": "SYMBOL",
@@ -163,13 +183,51 @@
         }
       ]
     },
+    "if": {
+      "type": "PREC_LEFT",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "if"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "expression"
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "else"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "expression"
+                  }
+                ]
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "identifier": {
+      "type": "PATTERN",
+      "value": "[a-zA-Z_][a-zA-Z0-9_]*"
+    },
     "expression": {
       "type": "CHOICE",
       "members": [
-        {
-          "type": "SYMBOL",
-          "name": "identifier"
-        },
         {
           "type": "SYMBOL",
           "name": "int"
@@ -189,6 +247,14 @@
         {
           "type": "SYMBOL",
           "name": "local_var"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "if"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
         }
       ]
     },

@@ -11,6 +11,7 @@ pub enum OpCode {
     Sub,
     Mul,
     Div,
+    Eq,
     Print,
 }
 impl TryFrom<u64> for OpCode {
@@ -29,7 +30,8 @@ impl TryFrom<u64> for OpCode {
             0x31 => OpCode::Sub,
             0x32 => OpCode::Mul,
             0x33 => OpCode::Div,
-            0x40 => OpCode::Print,
+            0x40 => OpCode::Eq,
+            0x50 => OpCode::Print,
             _ => return Err(value),
         })
     }
@@ -48,7 +50,8 @@ impl From<OpCode> for u64 {
             OpCode::Sub => 0x31,
             OpCode::Mul => 0x32,
             OpCode::Div => 0x33,
-            OpCode::Print => 0x40,
+            OpCode::Eq => 0x40,
+            OpCode::Print => 0x50,
         }
     }
 }
@@ -66,6 +69,7 @@ pub enum Op {
     Sub,
     Mul,
     Div,
+    Eq,
     Print,
 }
 impl From<Op> for OpCode {
@@ -82,6 +86,7 @@ impl From<Op> for OpCode {
             Op::Sub => OpCode::Sub,
             Op::Mul => OpCode::Mul,
             Op::Div => OpCode::Div,
+            Op::Eq => OpCode::Eq,
             Op::Print => OpCode::Print,
         }
     }
@@ -149,6 +154,7 @@ impl Iterator for DefinitionIterator<'_> {
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
             OpCode::Div => Op::Div,
+            OpCode::Eq => Op::Eq,
             OpCode::Print => Op::Print,
         };
         Some(op)
@@ -172,7 +178,7 @@ mod test_opcodes {
 
     #[test]
     fn test_u64_to_opcode() {
-        for i in 0..255 {
+        for i in 0..0xffff {
             if let Ok(op) = OpCode::try_from(i) {
                 assert_eq!(i, u64::from(op));
             }

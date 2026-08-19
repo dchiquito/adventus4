@@ -20,8 +20,6 @@ export default grammar({
       $.expression,
     ),
 
-    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
-
     positive_int: $ => /[1-9][0-9_]*/,
     negative_int: $ => /-[1-9][0-9_]*/,
     int: $ => choice(
@@ -35,29 +33,43 @@ export default grammar({
       "]",
     ),
 
+    dup: $ => "dup",
+    swap: $ => "swap",
     add: $ => "+",
     sub: $ => "-",
     mul: $ => "*",
     div: $ => "/",
+    eq: $ => "==",
     print: $ => "print",
     builtin: $ => choice(
+      $.dup,
+      $.swap,
       $.add,
       $.sub,
       $.mul,
       $.div,
+      $.eq,
       $.print,
     ),
 
     local_bind: $ => seq(">$", $.identifier),
     local_var: $ => seq("$", $.identifier),
 
+    if: $ => prec.left(1, seq(
+      "if", $.expression,
+      optional(seq("else", $.expression)),
+    )),
+
+    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+
     expression: $ => choice(
-      $.identifier,
       $.int,
       $.grouping,
       $.builtin,
       $.local_bind,
       $.local_var,
+      $.if,
+      $.identifier,
     ),
 
     manual_signature: $ => seq(":", $.signature),

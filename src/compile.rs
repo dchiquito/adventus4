@@ -118,6 +118,7 @@ impl<'a> DefCompiler<'a> {
             BUILTIN => self.compile_builtin(cursor),
             LOCAL_BIND => self.compile_local_bind(cursor),
             LOCAL_VAR => self.compile_local_var(cursor),
+            IF => self.compile_if(cursor),
             _ => unreachable!(
                 "{} ({})",
                 cursor.node().grammar_name(),
@@ -178,10 +179,13 @@ impl<'a> DefCompiler<'a> {
         assert_node_id!(cursor, BUILTIN, "builtin");
         assert!(cursor.goto_first_child());
         match cursor.node().grammar_id() {
+            DUP => self.compile_dup(cursor),
+            SWAP => self.compile_swap(cursor),
             ADD => self.compile_add(cursor),
             SUB => self.compile_sub(cursor),
             MUL => self.compile_mul(cursor),
             DIV => self.compile_div(cursor),
+            EQ => self.compile_eq(cursor),
             PRINT => self.compile_print(cursor),
             _ => unreachable!(
                 "{} ({})",
@@ -222,6 +226,17 @@ impl<'a> DefCompiler<'a> {
         self.def.push(Op::PushLocal(*local_id));
         assert!(cursor.goto_parent());
     }
+    fn compile_if(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, IF, "if");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        // TODO block stuff :(
+        if cursor.goto_next_sibling() {
+            assert!(cursor.goto_next_sibling());
+            // else
+        }
+        assert!(cursor.goto_parent());
+    }
 }
 
 macro_rules! compile_builtin_method {
@@ -233,9 +248,12 @@ macro_rules! compile_builtin_method {
     };
 }
 impl<'a> DefCompiler<'a> {
+    compile_builtin_method!(compile_dup, dup, Dup, DUP);
+    compile_builtin_method!(compile_swap, swap, Swap, SWAP);
     compile_builtin_method!(compile_add, add, Add, ADD);
     compile_builtin_method!(compile_sub, sub, Sub, SUB);
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
     compile_builtin_method!(compile_div, div, Div, DIV);
+    compile_builtin_method!(compile_eq, eq, Eq, EQ);
     compile_builtin_method!(compile_print, print, Print, PRINT);
 }

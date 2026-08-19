@@ -2,6 +2,7 @@ use crate::bytecode::{ByteCode, Definition, OpCode};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
+    Bool,
     Int,
     Char,
 }
@@ -73,6 +74,7 @@ impl Types {
                 OpCode::Sub => stack_mutation!(Int Int=>Int),
                 OpCode::Mul => stack_mutation!(Int Int=>Int),
                 OpCode::Div => stack_mutation!(Int Int=>Int),
+                OpCode::Eq => stack_mutation!(Int Int=>Bool),
                 OpCode::Print => stack_mutation!(Int=>Int),
             };
             def_type = def_type.chain(&sm);

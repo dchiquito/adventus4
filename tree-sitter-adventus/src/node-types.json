@@ -16,6 +16,14 @@
           "named": true
         },
         {
+          "type": "dup",
+          "named": true
+        },
+        {
+          "type": "eq",
+          "named": true
+        },
+        {
           "type": "mul",
           "named": true
         },
@@ -25,6 +33,10 @@
         },
         {
           "type": "sub",
+          "named": true
+        },
+        {
+          "type": "swap",
           "named": true
         }
       ]
@@ -93,6 +105,10 @@
           "named": true
         },
         {
+          "type": "if",
+          "named": true
+        },
+        {
           "type": "int",
           "named": true
         },
@@ -114,6 +130,21 @@
     "children": {
       "multiple": true,
       "required": false,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "if",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
       "types": [
         {
           "type": "expression",
@@ -279,8 +310,24 @@
     "named": true
   },
   {
+    "type": "dup",
+    "named": true
+  },
+  {
+    "type": "else",
+    "named": false
+  },
+  {
+    "type": "eq",
+    "named": true
+  },
+  {
     "type": "identifier",
     "named": true
+  },
+  {
+    "type": "if",
+    "named": false
   },
   {
     "type": "mul",
@@ -300,6 +347,10 @@
   },
   {
     "type": "sub",
+    "named": true
+  },
+  {
+    "type": "swap",
     "named": true
   }
 ]

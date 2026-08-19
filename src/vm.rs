@@ -42,6 +42,7 @@ impl Iterator for VM {
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
             OpCode::Div => Op::Div,
+            OpCode::Eq => Op::Eq,
             OpCode::Print => Op::Print,
         };
         Some(op)
@@ -81,6 +82,7 @@ impl VM {
             Op::Sub => self.op_sub(),
             Op::Mul => self.op_mul(),
             Op::Div => self.op_div(),
+            Op::Eq => self.op_eq(),
             Op::Print => self.op_print(),
         }
     }
@@ -147,6 +149,11 @@ impl VM {
         let b = self.stack.pop().expect("value on stack");
         let a = self.stack.pop().expect("value on stack");
         self.stack.push(a / b)
+    }
+    fn op_eq(&mut self) {
+        let b = self.stack.pop().expect("value on stack");
+        let a = self.stack.pop().expect("value on stack");
+        self.stack.push((a == b) as i64)
     }
     fn op_print(&mut self) {
         let value = self.stack.last().expect("value on stack");
