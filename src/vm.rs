@@ -45,6 +45,12 @@ impl Iterator for VM {
             OpCode::Mul => Op::Mul,
             OpCode::Div => Op::Div,
             OpCode::Eq => Op::Eq,
+            OpCode::Ne => Op::Ne,
+            OpCode::Gt => Op::Gt,
+            OpCode::Lt => Op::Lt,
+            OpCode::Gte => Op::Gte,
+            OpCode::Lte => Op::Lte,
+            OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
         };
         Some(op)
@@ -89,6 +95,12 @@ impl VM {
             Op::Mul => self.op_mul(),
             Op::Div => self.op_div(),
             Op::Eq => self.op_eq(),
+            Op::Ne => self.op_ne(),
+            Op::Gt => self.op_gt(),
+            Op::Lt => self.op_lt(),
+            Op::Gte => self.op_gte(),
+            Op::Lte => self.op_lte(),
+            Op::Not => self.op_not(),
             Op::Print => self.op_print(),
         }
     }
@@ -171,6 +183,36 @@ impl VM {
         let b = self.stack.pop().expect("value on stack");
         let a = self.stack.pop().expect("value on stack");
         self.stack.push((a == b) as i64)
+    }
+    fn op_ne(&mut self) {
+        let b = self.stack.pop().expect("value on stack");
+        let a = self.stack.pop().expect("value on stack");
+        self.stack.push((a != b) as i64)
+    }
+    fn op_gt(&mut self) {
+        let b = self.stack.pop().expect("value on stack");
+        let a = self.stack.pop().expect("value on stack");
+        self.stack.push((a > b) as i64)
+    }
+    fn op_lt(&mut self) {
+        let b = self.stack.pop().expect("value on stack");
+        let a = self.stack.pop().expect("value on stack");
+        self.stack.push((a < b) as i64)
+    }
+    fn op_gte(&mut self) {
+        let b = self.stack.pop().expect("value on stack");
+        let a = self.stack.pop().expect("value on stack");
+        self.stack.push((a >= b) as i64)
+    }
+    fn op_lte(&mut self) {
+        let b = self.stack.pop().expect("value on stack");
+        let a = self.stack.pop().expect("value on stack");
+        self.stack.push((a <= b) as i64)
+    }
+    fn op_not(&mut self) {
+        let a = self.stack.pop().expect("value on stack");
+        let b = a == 1;
+        self.stack.push((!b) as i64)
     }
     fn op_print(&mut self) {
         let value = self.stack.last().expect("value on stack");

@@ -202,6 +202,12 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             MUL => self.compile_mul(cursor),
             DIV => self.compile_div(cursor),
             EQ => self.compile_eq(cursor),
+            NE => self.compile_ne(cursor),
+            GT => self.compile_gt(cursor),
+            LT => self.compile_lt(cursor),
+            GTE => self.compile_gte(cursor),
+            LTE => self.compile_lte(cursor),
+            NOT => self.compile_not(cursor),
             PRINT => self.compile_print(cursor),
             _ => unreachable!(
                 "{} ({})",
@@ -287,5 +293,11 @@ impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
     compile_builtin_method!(compile_div, div, Div, DIV);
     compile_builtin_method!(compile_eq, eq, Eq, EQ);
+    compile_builtin_method!(compile_ne, ne, Ne, NE);
+    compile_builtin_method!(compile_gt, gt, Gt, GT);
+    compile_builtin_method!(compile_lt, lt, Lt, LT);
+    compile_builtin_method!(compile_gte, gte, Gte, GTE);
+    compile_builtin_method!(compile_lte, lte, Lte, LTE);
+    compile_builtin_method!(compile_not, not, Not, NOT);
     compile_builtin_method!(compile_print, print, Print, PRINT);
 }

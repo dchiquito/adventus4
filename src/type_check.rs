@@ -77,6 +77,12 @@ impl Types {
                 OpCode::Mul => stack_mutation!(Int Int=>Int),
                 OpCode::Div => stack_mutation!(Int Int=>Int),
                 OpCode::Eq => stack_mutation!(Int Int=>Bool),
+                OpCode::Ne => stack_mutation!(Int Int=>Bool),
+                OpCode::Gt => stack_mutation!(Int Int=>Bool),
+                OpCode::Lt => stack_mutation!(Int Int=>Bool),
+                OpCode::Gte => stack_mutation!(Int Int=>Bool),
+                OpCode::Lte => stack_mutation!(Int Int=>Bool),
+                OpCode::Not => stack_mutation!(Bool=>Bool),
                 OpCode::Print => stack_mutation!(Int=>Int),
             };
             def_type = def_type.chain(&sm);

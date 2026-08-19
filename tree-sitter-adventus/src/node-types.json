@@ -24,7 +24,31 @@
           "named": true
         },
         {
+          "type": "gt",
+          "named": true
+        },
+        {
+          "type": "gte",
+          "named": true
+        },
+        {
+          "type": "lt",
+          "named": true
+        },
+        {
+          "type": "lte",
+          "named": true
+        },
+        {
           "type": "mul",
+          "named": true
+        },
+        {
+          "type": "ne",
+          "named": true
+        },
+        {
+          "type": "not",
           "named": true
         },
         {
@@ -322,6 +346,14 @@
     "named": true
   },
   {
+    "type": "gt",
+    "named": true
+  },
+  {
+    "type": "gte",
+    "named": true
+  },
+  {
     "type": "identifier",
     "named": true
   },
@@ -330,11 +362,27 @@
     "named": false
   },
   {
+    "type": "lt",
+    "named": true
+  },
+  {
+    "type": "lte",
+    "named": true
+  },
+  {
     "type": "mul",
     "named": true
   },
   {
+    "type": "ne",
+    "named": true
+  },
+  {
     "type": "negative_int",
+    "named": true
+  },
+  {
+    "type": "not",
     "named": true
   },
   {

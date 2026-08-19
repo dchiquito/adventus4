@@ -116,6 +116,30 @@
       "type": "STRING",
       "value": "=="
     },
+    "ne": {
+      "type": "STRING",
+      "value": "!="
+    },
+    "gt": {
+      "type": "STRING",
+      "value": ">"
+    },
+    "lt": {
+      "type": "STRING",
+      "value": "<"
+    },
+    "gte": {
+      "type": "STRING",
+      "value": ">="
+    },
+    "lte": {
+      "type": "STRING",
+      "value": "<="
+    },
+    "not": {
+      "type": "STRING",
+      "value": "~"
+    },
     "print": {
       "type": "STRING",
       "value": "print"
@@ -150,6 +174,30 @@
         {
           "type": "SYMBOL",
           "name": "eq"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ne"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "gt"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "lt"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "gte"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "lte"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "not"
         },
         {
           "type": "SYMBOL",

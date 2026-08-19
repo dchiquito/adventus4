@@ -14,6 +14,12 @@ pub enum OpCode {
     Mul,
     Div,
     Eq,
+    Ne,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Not,
     Print,
 }
 impl TryFrom<u64> for OpCode {
@@ -35,6 +41,12 @@ impl TryFrom<u64> for OpCode {
             0x32 => OpCode::Mul,
             0x33 => OpCode::Div,
             0x40 => OpCode::Eq,
+            0x41 => OpCode::Ne,
+            0x42 => OpCode::Gt,
+            0x43 => OpCode::Lt,
+            0x44 => OpCode::Gte,
+            0x45 => OpCode::Lte,
+            0x46 => OpCode::Not,
             0x50 => OpCode::Print,
             _ => return Err(value),
         })
@@ -57,6 +69,12 @@ impl From<OpCode> for u64 {
             OpCode::Mul => 0x32,
             OpCode::Div => 0x33,
             OpCode::Eq => 0x40,
+            OpCode::Ne => 0x41,
+            OpCode::Gt => 0x42,
+            OpCode::Lt => 0x43,
+            OpCode::Gte => 0x44,
+            OpCode::Lte => 0x45,
+            OpCode::Not => 0x46,
             OpCode::Print => 0x50,
         }
     }
@@ -78,6 +96,12 @@ pub enum Op {
     Mul,
     Div,
     Eq,
+    Ne,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Not,
     Print,
 }
 impl From<Op> for OpCode {
@@ -97,6 +121,12 @@ impl From<Op> for OpCode {
             Op::Mul => OpCode::Mul,
             Op::Div => OpCode::Div,
             Op::Eq => OpCode::Eq,
+            Op::Ne => OpCode::Ne,
+            Op::Gt => OpCode::Gt,
+            Op::Lt => OpCode::Lt,
+            Op::Gte => OpCode::Gte,
+            Op::Lte => OpCode::Lte,
+            Op::Not => OpCode::Not,
             Op::Print => OpCode::Print,
         }
     }
@@ -159,6 +189,12 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Mul => Op::Mul,
             OpCode::Div => Op::Div,
             OpCode::Eq => Op::Eq,
+            OpCode::Ne => Op::Ne,
+            OpCode::Gt => Op::Gt,
+            OpCode::Lt => Op::Lt,
+            OpCode::Gte => Op::Gte,
+            OpCode::Lte => Op::Lte,
+            OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
         };
         Some(op)
