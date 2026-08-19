@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
-use crate::bytecode::{ByteCode, Definition, Op};
+use crate::bytecode::{ByteCode, Op};
 
 include!(concat!(env!("OUT_DIR"), "/grammar_ids.rs"));
 
@@ -68,44 +68,60 @@ impl<'a> Compiler<'a> {
         assert!(cursor.goto_next_sibling());
         let name = &self.source[cursor.node().byte_range()];
 
+        let block_id = self.bytecode.new_block();
+        let def_id = self.bytecode.new_def(block_id);
         // Register the name of the definition now so that it can be referenced
         // recursively while compiling itself.
-        self.def_map
-            .insert(name.to_string(), self.bytecode.defs.len());
+        self.def_map.insert(name.to_string(), block_id);
         if name == "main" {
-            self.bytecode.main_id = Some(self.bytecode.defs.len());
+            self.bytecode.main_id = Some(block_id);
         }
 
-        let mut def_compiler = DefCompiler::new(self);
-        assert!(cursor.goto_next_sibling());
-        def_compiler.compile_def(cursor);
-
-        self.bytecode.defs.push(def_compiler.def);
+        {
+            let mut def_compiler = DefCompiler::new(self, def_id);
+            assert!(cursor.goto_next_sibling());
+            def_compiler.compile_def(cursor, block_id);
+        }
     }
 }
 
-struct DefCompiler<'a> {
-    compiler: &'a Compiler<'a>,
-    def: Definition,
+struct DefCompiler<'a, 'b> {
+    compiler: &'a mut Compiler<'b>,
+    def_id: usize,
     local_map: HashMap<String, usize>,
 }
-impl<'a> DefCompiler<'a> {
-    fn new(compiler: &'a Compiler) -> Self {
-        let def = Definition::default();
+impl<'a, 'b> DefCompiler<'a, 'b> {
+    fn new(compiler: &'a mut Compiler<'b>, def_id: usize) -> Self {
         let local_map = HashMap::default();
         Self {
             compiler,
-            def,
+            def_id,
             local_map,
         }
     }
-    fn compile_def(&mut self, cursor: &mut TreeCursor) {
+    fn compile_def<'c: 'a>(&'c mut self, cursor: &mut TreeCursor, block_id: usize) {
         if cursor.node().grammar_id() != EXPRESSION {
             // TODO ingest the signature
             assert!(cursor.goto_next_sibling()); // :
         }
-        self.compile_expression(cursor);
+        let mut block_compiler = BlockCompiler::new(self, block_id);
+        block_compiler.compile_expression(cursor);
         assert!(cursor.goto_parent());
+    }
+}
+struct BlockCompiler<'a, 'b> {
+    def_compiler: &'a mut DefCompiler<'a, 'b>,
+    block_id: usize,
+}
+impl<'a, 'b> BlockCompiler<'a, 'b> {
+    fn new(def_compiler: &'a mut DefCompiler<'a, 'b>, block_id: usize) -> Self {
+        Self {
+            def_compiler,
+            block_id,
+        }
+    }
+    fn push(&mut self, op: Op) {
+        self.def_compiler.compiler.bytecode.blocks[self.block_id].push(op);
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
@@ -129,11 +145,11 @@ impl<'a> DefCompiler<'a> {
     }
     fn compile_identifier(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IDENTIFIER, "identifier");
-        let string_repr = &self.compiler.source[cursor.node().byte_range()];
+        let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("id {string_repr}");
-        if let Some(&def_id) = self.compiler.def_map.get(string_repr) {
+        if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
             eprintln!("Looked up {def_id}");
-            self.def.push(Op::Call(def_id));
+            self.push(Op::Call(def_id));
         } else {
             panic!("{string_repr} is undefined");
         }
@@ -154,7 +170,7 @@ impl<'a> DefCompiler<'a> {
     }
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
-        let string_repr = &self.compiler.source[cursor.node().byte_range()];
+        let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("int {:?}", string_repr);
         let int = string_repr
             .as_bytes()
@@ -162,7 +178,7 @@ impl<'a> DefCompiler<'a> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.def.push(Op::Literal(int));
+        self.push(Op::Literal(int));
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");
@@ -199,17 +215,20 @@ impl<'a> DefCompiler<'a> {
         assert_node_id!(cursor, LOCAL_BIND, "local_bind");
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling());
-        let local_name = &self.compiler.source[cursor.node().byte_range()];
+        let local_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  lb {:?}", local_name);
-        let local_id = if let Some(id) = self.local_map.get(local_name) {
+        let local_id = if let Some(id) = self.def_compiler.local_map.get(local_name) {
             *id
         } else {
-            let id = self.def.get_local_size();
-            self.local_map.insert(local_name.to_string(), id);
-            self.def.incr_local_size();
+            let id =
+                self.def_compiler.compiler.bytecode.defs[self.def_compiler.def_id].get_local_size();
+            self.def_compiler
+                .local_map
+                .insert(local_name.to_string(), id);
+            self.def_compiler.compiler.bytecode.defs[self.def_compiler.def_id].incr_local_size();
             id
         };
-        self.def.push(Op::BindLocal(local_id));
+        self.push(Op::BindLocal(local_id));
 
         assert!(cursor.goto_parent());
     }
@@ -217,13 +236,14 @@ impl<'a> DefCompiler<'a> {
         assert_node_id!(cursor, LOCAL_VAR, "local_var");
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling());
-        let local_name = &self.compiler.source[cursor.node().byte_range()];
+        let local_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  lv {:?}", local_name);
         let local_id = self
+            .def_compiler
             .local_map
             .get(local_name)
             .unwrap_or_else(|| panic!("local {local_name} is unbound"));
-        self.def.push(Op::PushLocal(*local_id));
+        self.push(Op::PushLocal(*local_id));
         assert!(cursor.goto_parent());
     }
     fn compile_if(&mut self, cursor: &mut TreeCursor) {
@@ -243,11 +263,11 @@ macro_rules! compile_builtin_method {
     ($method:ident, $lower:ident, $pascal:ident, $upper:ident) => {
         fn $method(&mut self, cursor: &mut TreeCursor) {
             assert_node_id!(cursor, $upper, stringify!($lower));
-            self.def.push(Op::$pascal);
+            self.push(Op::$pascal);
         }
     };
 }
-impl<'a> DefCompiler<'a> {
+impl<'a, 'b> BlockCompiler<'a, 'b> {
     compile_builtin_method!(compile_dup, dup, Dup, DUP);
     compile_builtin_method!(compile_swap, swap, Swap, SWAP);
     compile_builtin_method!(compile_add, add, Add, ADD);

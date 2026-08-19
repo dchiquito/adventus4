@@ -1,4 +1,4 @@
-use crate::bytecode::{ByteCode, Definition, OpCode};
+use crate::bytecode::{Block, ByteCode, Definition, OpCode};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
@@ -47,20 +47,20 @@ impl StackMutation {
 
 #[derive(Debug, Default)]
 pub struct Types {
-    def_types: Vec<StackMutation>,
+    block_types: Vec<StackMutation>,
 }
 impl Types {
     pub fn infer(bytecode: &ByteCode) -> Self {
         let mut types = Self::default();
-        for def in bytecode.defs.iter() {
-            let def_type = types.infer_def(def);
-            types.def_types.push(def_type);
+        for block in bytecode.blocks.iter() {
+            let block_type = types.infer_block(block);
+            types.block_types.push(block_type);
         }
         types
     }
-    fn infer_def(&self, def: &Definition) -> StackMutation {
+    fn infer_block(&self, block: &Block) -> StackMutation {
         let mut def_type = stack_mutation!(=>);
-        for op in def.iter() {
+        for op in block.iter() {
             let op = OpCode::from(op);
             let sm = match op {
                 OpCode::Literal => stack_mutation!(=>Int),

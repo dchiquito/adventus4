@@ -17,7 +17,7 @@ pub struct VM {
 
 impl VM {
     fn next_word(&mut self) -> u64 {
-        let word = self.bytecode.defs[self.def_id].data[self.pc];
+        let word = self.bytecode.blocks[self.bytecode.defs[self.def_id].block_id].data[self.pc];
         self.pc += 1;
         word
     }
@@ -26,7 +26,11 @@ impl Iterator for VM {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc >= self.bytecode.defs[self.def_id].data.len() {
+        if self.pc
+            >= self.bytecode.blocks[self.bytecode.defs[self.def_id].block_id]
+                .data
+                .len()
+        {
             return None;
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");

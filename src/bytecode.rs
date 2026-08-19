@@ -93,17 +93,10 @@ impl From<Op> for OpCode {
 }
 
 #[derive(Debug, Default)]
-pub struct Definition {
+pub struct Block {
     pub data: Vec<u64>,
-    local_size: usize,
 }
-impl Definition {
-    // pub fn read_word(&self, pc: usize) -> Option<u64> {
-    //     self.data.get(pc).copied()
-    // }
-    pub fn initialize_locals(&self) -> Vec<i64> {
-        vec![0; self.local_size]
-    }
+impl Block {
     pub fn push(&mut self, op: Op) {
         self.data.push(u64::from(OpCode::from(op)));
         if let Some(word) = match op {
@@ -116,29 +109,26 @@ impl Definition {
             self.data.push(word)
         }
     }
-    pub fn get_local_size(&self) -> usize {
-        self.local_size
-    }
-    pub fn incr_local_size(&mut self) {
-        self.local_size += 1;
+    pub fn iter(&self) -> BlockIterator<'_> {
+        BlockIterator { block: self, pc: 0 }
     }
 }
-pub struct DefinitionIterator<'a> {
-    def: &'a Definition,
+pub struct BlockIterator<'a> {
+    block: &'a Block,
     pc: usize,
 }
-impl DefinitionIterator<'_> {
+impl BlockIterator<'_> {
     fn next_word(&mut self) -> u64 {
-        let word = self.def.data[self.pc];
+        let word = self.block.data[self.pc];
         self.pc += 1;
         word
     }
 }
-impl Iterator for DefinitionIterator<'_> {
+impl Iterator for BlockIterator<'_> {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc >= self.def.data.len() {
+        if self.pc >= self.block.data.len() {
             return None;
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
@@ -160,16 +150,49 @@ impl Iterator for DefinitionIterator<'_> {
         Some(op)
     }
 }
+
+#[derive(Debug, Default)]
+pub struct Definition {
+    pub block_id: usize,
+    local_size: usize,
+}
 impl Definition {
-    pub fn iter(&self) -> DefinitionIterator<'_> {
-        DefinitionIterator { def: self, pc: 0 }
+    pub fn new(block_id: usize) -> Self {
+        let local_size = 0;
+        Self {
+            block_id,
+            local_size,
+        }
+    }
+    pub fn initialize_locals(&self) -> Vec<i64> {
+        vec![0; self.local_size]
+    }
+    pub fn get_local_size(&self) -> usize {
+        self.local_size
+    }
+    pub fn incr_local_size(&mut self) {
+        self.local_size += 1;
     }
 }
 
 #[derive(Debug, Default)]
 pub struct ByteCode {
+    pub blocks: Vec<Block>,
     pub defs: Vec<Definition>,
     pub main_id: Option<usize>,
+}
+
+impl ByteCode {
+    pub fn new_block(&mut self) -> usize {
+        let block_id = self.blocks.len();
+        self.blocks.push(Block::default());
+        block_id
+    }
+    pub fn new_def(&mut self, block_id: usize) -> usize {
+        let def_id = self.defs.len();
+        self.defs.push(Definition::new(block_id));
+        def_id
+    }
 }
 
 #[cfg(test)]
