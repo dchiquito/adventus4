@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
-use crate::bytecode::{ByteCode, Definition, Op, OpCode};
+use crate::bytecode::{ByteCode, Definition, Op};
 
 include!(concat!(env!("OUT_DIR"), "/grammar_ids.rs"));
 

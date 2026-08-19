@@ -161,7 +161,7 @@ impl Iterator for DefinitionIterator<'_> {
     }
 }
 impl Definition {
-    pub fn iter(&self) -> DefinitionIterator {
+    pub fn iter(&self) -> DefinitionIterator<'_> {
         DefinitionIterator { def: self, pc: 0 }
     }
 }
