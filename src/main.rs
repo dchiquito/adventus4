@@ -5,8 +5,8 @@ fn main() {
         let source_code = std::fs::read_to_string(in_file).unwrap();
         let bytecode = Compiler::new(&source_code).compile();
         eprintln!("{bytecode:?}");
-        let types = Types::infer(&bytecode);
-        eprintln!("{types:?}");
+        // let types = Types::infer(&bytecode);
+        // eprintln!("{types:?}");
         let mut vm = VM::new(bytecode);
         vm.run();
     }

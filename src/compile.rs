@@ -23,13 +23,13 @@ macro_rules! assert_node_id {
     };
 }
 
-pub struct Compiler<'a> {
-    source: &'a str,
+pub struct Compiler<'s> {
+    source: &'s str,
     bytecode: ByteCode,
     def_map: HashMap<String, usize>,
 }
-impl<'a> Compiler<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl<'s> Compiler<'s> {
+    pub fn new(source: &'s str) -> Self {
         let bytecode = ByteCode::default();
         let def_map = HashMap::default();
         Self {
@@ -62,7 +62,7 @@ impl<'a> Compiler<'a> {
         assert_eq!(cursor.node(), root);
         self.bytecode
     }
-    fn compile_def(&mut self, cursor: &mut TreeCursor) {
+    fn compile_def<'a>(&'a mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, DEF, "def");
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling());
@@ -85,13 +85,13 @@ impl<'a> Compiler<'a> {
     }
 }
 
-struct DefCompiler<'a, 'b> {
-    compiler: &'a mut Compiler<'b>,
+struct DefCompiler<'a, 's> {
+    compiler: &'a mut Compiler<'s>,
     def_id: usize,
     local_map: HashMap<String, usize>,
 }
-impl<'a, 'b> DefCompiler<'a, 'b> {
-    fn new(compiler: &'a mut Compiler<'b>, def_id: usize) -> Self {
+impl<'a, 's> DefCompiler<'a, 's> {
+    fn new(compiler: &'a mut Compiler<'s>, def_id: usize) -> Self {
         let local_map = HashMap::default();
         Self {
             compiler,
@@ -99,7 +99,7 @@ impl<'a, 'b> DefCompiler<'a, 'b> {
             local_map,
         }
     }
-    fn compile_def<'c: 'a>(&'c mut self, cursor: &mut TreeCursor, block_id: usize) {
+    fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: usize) {
         if cursor.node().grammar_id() != EXPRESSION {
             // TODO ingest the signature
             assert!(cursor.goto_next_sibling()); // :
@@ -109,12 +109,12 @@ impl<'a, 'b> DefCompiler<'a, 'b> {
         assert!(cursor.goto_parent());
     }
 }
-struct BlockCompiler<'a, 'b> {
-    def_compiler: &'a mut DefCompiler<'a, 'b>,
+struct BlockCompiler<'d, 'c, 's> {
+    def_compiler: &'d mut DefCompiler<'c, 's>,
     block_id: usize,
 }
-impl<'a, 'b> BlockCompiler<'a, 'b> {
-    fn new(def_compiler: &'a mut DefCompiler<'a, 'b>, block_id: usize) -> Self {
+impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
+    fn new(def_compiler: &'d mut DefCompiler<'c, 's>, block_id: usize) -> Self {
         Self {
             def_compiler,
             block_id,
@@ -250,11 +250,23 @@ impl<'a, 'b> BlockCompiler<'a, 'b> {
         assert_node_id!(cursor, IF, "if");
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling());
-        // TODO block stuff :(
-        if cursor.goto_next_sibling() {
-            assert!(cursor.goto_next_sibling());
-            // else
+        let then_block_id = self.def_compiler.compiler.bytecode.new_block();
+        let finally_block_id = self.def_compiler.compiler.bytecode.new_block();
+        {
+            let mut then_block_compiler = BlockCompiler::new(self.def_compiler, then_block_id);
+            then_block_compiler.compile_expression(cursor);
+            then_block_compiler.push(Op::GoTo(finally_block_id));
         }
+        self.push(Op::GoToIf(then_block_id));
+
+        if cursor.goto_next_sibling() {
+            // else
+            assert!(cursor.goto_next_sibling());
+            self.compile_expression(cursor);
+        }
+
+        self.push(Op::GoTo(finally_block_id));
+        self.block_id = finally_block_id;
         assert!(cursor.goto_parent());
     }
 }
@@ -267,7 +279,7 @@ macro_rules! compile_builtin_method {
         }
     };
 }
-impl<'a, 'b> BlockCompiler<'a, 'b> {
+impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_dup, dup, Dup, DUP);
     compile_builtin_method!(compile_swap, swap, Swap, SWAP);
     compile_builtin_method!(compile_add, add, Add, ADD);

@@ -1,14 +1,14 @@
 use crate::bytecode::{ByteCode, Op, OpCode};
 
 struct StackFrame {
-    def_id: usize,
+    block_id: usize,
     pc: usize,
     locals: Vec<i64>,
 }
 
 pub struct VM {
     bytecode: ByteCode,
-    def_id: usize,
+    block_id: usize,
     pc: usize,
     locals: Vec<i64>,
     stack: Vec<i64>,
@@ -17,7 +17,7 @@ pub struct VM {
 
 impl VM {
     fn next_word(&mut self) -> u64 {
-        let word = self.bytecode.blocks[self.bytecode.defs[self.def_id].block_id].data[self.pc];
+        let word = self.bytecode.blocks[self.block_id].data[self.pc];
         self.pc += 1;
         word
     }
@@ -26,11 +26,7 @@ impl Iterator for VM {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc
-            >= self.bytecode.blocks[self.bytecode.defs[self.def_id].block_id]
-                .data
-                .len()
-        {
+        if self.pc >= self.bytecode.blocks[self.block_id].data.len() {
             return None;
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
@@ -38,6 +34,8 @@ impl Iterator for VM {
             OpCode::Literal => Op::Literal(self.next_word() as i64),
             OpCode::Call => Op::Call(self.next_word() as usize),
             OpCode::Return => Op::Return,
+            OpCode::GoTo => Op::GoTo(self.next_word() as usize),
+            OpCode::GoToIf => Op::GoToIf(self.next_word() as usize),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
@@ -55,13 +53,14 @@ impl Iterator for VM {
 impl VM {
     pub fn new(bytecode: ByteCode) -> Self {
         let def_id = bytecode.main_id.expect("no main definition");
+        let block_id = bytecode.defs[def_id].block_id;
         let pc = 0;
         let locals = bytecode.defs[def_id].initialize_locals();
         let stack = vec![];
         let call_stack = vec![];
         Self {
             bytecode,
-            def_id,
+            block_id,
             pc,
             locals,
             stack,
@@ -74,10 +73,13 @@ impl VM {
         }
     }
     fn step(&mut self, op: &Op) {
+        eprintln!("EXEC {op:?}");
         match *op {
             Op::Literal(literal) => self.op_literal(literal),
             Op::Call(def_id) => self.op_call(def_id),
             Op::Return => self.op_return(),
+            Op::GoTo(block_id) => self.op_go_to(block_id),
+            Op::GoToIf(block_id) => self.op_go_to_if(block_id),
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap(),
             Op::BindLocal(local_id) => self.op_bind_local(local_id),
@@ -99,21 +101,32 @@ impl VM {
         let mut locals = self.bytecode.defs[def_id].initialize_locals();
         std::mem::swap(&mut self.locals, &mut locals);
         let frame = StackFrame {
-            def_id: self.def_id,
+            block_id: self.block_id,
             pc: self.pc,
             locals,
         };
         self.call_stack.push(frame);
-        self.def_id = def_id;
+        self.block_id = self.bytecode.defs[def_id].block_id;
         self.pc = 0;
     }
     fn op_return(&mut self) {
         if let Some(frame) = self.call_stack.pop() {
-            self.def_id = frame.def_id;
+            self.block_id = frame.block_id;
             self.pc = frame.pc;
             self.locals = frame.locals;
         } else {
             panic!("Done");
+        }
+    }
+    fn op_go_to(&mut self, block_id: usize) {
+        self.block_id = block_id;
+        self.pc = 0;
+    }
+    fn op_go_to_if(&mut self, block_id: usize) {
+        let value = self.stack.pop().unwrap();
+        if value == 1 {
+            self.block_id = block_id;
+            self.pc = 0;
         }
     }
     fn op_dup(&mut self) {
