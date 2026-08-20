@@ -109,8 +109,8 @@ pub enum Op {
     Not,
     Print,
     ObjectId(u64),
-    Malloc,
-    With,
+    Malloc(usize),
+    With(usize),
 }
 impl From<Op> for OpCode {
     fn from(op: Op) -> Self {
@@ -141,8 +141,8 @@ impl From<Op> for OpCode {
             Op::Not => OpCode::Not,
             Op::Print => OpCode::Print,
             Op::ObjectId(_) => OpCode::ObjectId,
-            Op::Malloc => OpCode::Malloc,
-            Op::With => OpCode::With,
+            Op::Malloc(_) => OpCode::Malloc,
+            Op::With(_) => OpCode::With,
         }
     }
 }
@@ -161,7 +161,11 @@ impl Block {
             Op::GoToIf(block_id) => Some(block_id as u64),
             Op::BindLocal(local_id) => Some(local_id as u64),
             Op::PushLocal(local_id) => Some(local_id as u64),
+            Op::BindProp(prop_id) => Some(prop_id as u64),
+            Op::PushProp(prop_id) => Some(prop_id as u64),
             Op::ObjectId(obj_id) => Some(obj_id),
+            Op::Malloc(len) => Some(len as u64),
+            Op::With(len) => Some(len as u64),
             _ => None,
         } {
             self.data.push(word)
@@ -169,6 +173,11 @@ impl Block {
     }
     pub fn iter(&self) -> BlockIterator<'_> {
         BlockIterator { block: self, pc: 0 }
+    }
+    pub fn pretty_print(&self) {
+        for op in self.iter() {
+            println!("  {op:?}",);
+        }
     }
 }
 pub struct BlockIterator<'a> {
@@ -217,8 +226,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
             OpCode::ObjectId => Op::ObjectId(self.next_word()),
-            OpCode::Malloc => Op::Malloc,
-            OpCode::With => Op::With,
+            OpCode::Malloc => Op::Malloc(self.next_word() as usize),
+            OpCode::With => Op::With(self.next_word() as usize),
         };
         Some(op)
     }
@@ -265,6 +274,21 @@ impl ByteCode {
         let def_id = self.defs.len();
         self.defs.push(Definition::new(block_id));
         def_id
+    }
+    pub fn pretty_print(&self) {
+        for (i, block) in self.blocks.iter().enumerate() {
+            println!("Block {i}",);
+            block.pretty_print();
+        }
+        for (i, def) in self.defs.iter().enumerate() {
+            if Some(i) == self.main_id {
+                println!("main:");
+            }
+            println!(
+                "Definition {i} -> block {} ({} locals)",
+                def.block_id, def.local_size
+            );
+        }
     }
 }
 

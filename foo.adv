@@ -1,10 +1,10 @@
-def rebind_add +
-
 def Obj {x y z}
 def obj_sum [
   (Obj) with [
+    4 >@x
     @x @y + @z +
   ]
+  print
 ]
 
 def objecto [
@@ -14,9 +14,6 @@ def objecto [
 ]
 
 def main [
-  1 1 == >$t
-  $t not >$f
-  $f $f or print
-  if 666 else 777
+  objecto
   print
 ]

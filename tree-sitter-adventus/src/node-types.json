@@ -385,9 +385,13 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
         {
           "type": "type_constraint",
           "named": true

@@ -3,26 +3,29 @@ use crate::bytecode::{ByteCode, Op, OpCode};
 struct StackFrame {
     block_id: usize,
     pc: usize,
+    with_stack_size: usize,
     locals: Vec<i64>,
 }
 
-pub struct VM {
-    bytecode: ByteCode,
+pub struct VM<'a> {
+    bytecode: &'a ByteCode,
     block_id: usize,
     pc: usize,
     locals: Vec<i64>,
     stack: Vec<i64>,
     call_stack: Vec<StackFrame>,
+    with_stack: Vec<usize>,
+    allocations: Vec<Vec<i64>>,
 }
 
-impl VM {
+impl VM<'_> {
     fn next_word(&mut self) -> u64 {
         let word = self.bytecode.blocks[self.block_id].data[self.pc];
         self.pc += 1;
         word
     }
 }
-impl Iterator for VM {
+impl Iterator for VM<'_> {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -57,20 +60,25 @@ impl Iterator for VM {
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
             OpCode::ObjectId => Op::ObjectId(self.next_word()),
-            OpCode::Malloc => Op::Malloc,
-            OpCode::With => Op::With,
+            OpCode::Malloc => Op::Malloc(self.next_word() as usize),
+            OpCode::With => Op::With(self.next_word() as usize),
         };
         Some(op)
     }
 }
-impl VM {
-    pub fn new(bytecode: ByteCode) -> Self {
+impl<'a> VM<'a> {
+    pub fn new_main(bytecode: &'a ByteCode) -> Self {
         let def_id = bytecode.main_id.expect("no main definition");
         let block_id = bytecode.defs[def_id].block_id;
+        Self::new(bytecode, def_id, block_id)
+    }
+    pub fn new(bytecode: &'a ByteCode, def_id: usize, block_id: usize) -> Self {
         let pc = 0;
         let locals = bytecode.defs[def_id].initialize_locals();
         let stack = vec![];
         let call_stack = vec![];
+        let with_stack = vec![];
+        let allocations = vec![];
         Self {
             bytecode,
             block_id,
@@ -78,6 +86,8 @@ impl VM {
             locals,
             stack,
             call_stack,
+            with_stack,
+            allocations,
         }
     }
     pub fn run(&mut self) {
@@ -114,12 +124,12 @@ impl VM {
             Op::Not => self.op_not(),
             Op::Print => self.op_print(),
             Op::ObjectId(obj_id) => self.op_object_id(obj_id),
-            Op::Malloc => self.op_malloc(),
-            Op::With => self.op_with(),
+            Op::Malloc(len) => self.op_malloc(len),
+            Op::With(len) => self.op_with(len),
         }
     }
 }
-impl VM {
+impl VM<'_> {
     fn op_literal(&mut self, literal: i64) {
         self.stack.push(literal);
     }
@@ -129,6 +139,7 @@ impl VM {
         let frame = StackFrame {
             block_id: self.block_id,
             pc: self.pc,
+            with_stack_size: self.with_stack.len(),
             locals,
         };
         self.call_stack.push(frame);
@@ -136,10 +147,19 @@ impl VM {
         self.pc = 0;
     }
     fn op_return(&mut self) {
-        if let Some(frame) = self.call_stack.pop() {
-            self.block_id = frame.block_id;
-            self.pc = frame.pc;
-            self.locals = frame.locals;
+        if let Some(StackFrame {
+            block_id,
+            pc,
+            with_stack_size,
+            locals,
+        }) = self.call_stack.pop()
+        {
+            self.block_id = block_id;
+            self.pc = pc;
+            while self.with_stack.len() > with_stack_size {
+                self.with_stack.pop();
+            }
+            self.locals = locals;
         } else {
             panic!("Done");
         }
@@ -174,10 +194,16 @@ impl VM {
         self.stack.push(value);
     }
     fn op_bind_prop(&mut self, prop_id: usize) {
-        todo!()
+        let ref_id = self.with_stack.last().unwrap();
+        let obj = &mut self.allocations[*ref_id];
+        let value = self.stack.pop().unwrap();
+        obj[prop_id] = value;
     }
     fn op_push_prop(&mut self, prop_id: usize) {
-        todo!();
+        let ref_id = self.with_stack.last().unwrap();
+        let obj = &self.allocations[*ref_id];
+        let prop = obj[prop_id];
+        self.stack.push(prop);
     }
     fn op_add(&mut self) {
         let b = self.stack.pop().expect("value on stack");
@@ -250,10 +276,26 @@ impl VM {
     fn op_object_id(&mut self, obj_id: u64) {
         self.stack.push(obj_id as i64);
     }
-    fn op_malloc(&mut self) {
-        todo!()
+    fn op_malloc(&mut self, len: usize) {
+        let ref_id = self.allocations.len();
+        let mut obj = vec![0; len];
+        for i in (0..len).rev() {
+            obj[i] = self.stack.pop().unwrap();
+        }
+        self.allocations.push(obj);
+        self.stack.push(ref_id as i64);
     }
-    fn op_with(&mut self) {
-        todo!()
+    fn op_with(&mut self, len: usize) {
+        let ref_id = self.stack.pop().unwrap() as usize;
+        assert_eq!(self.allocations[ref_id].len(), len);
+        self.with_stack.push(ref_id);
+    }
+}
+impl VM<'_> {
+    pub fn pop_from_stack(&mut self) -> i64 {
+        self.stack.pop().unwrap()
+    }
+    pub fn stack_len(&self) -> usize {
+        self.stack.len()
     }
 }

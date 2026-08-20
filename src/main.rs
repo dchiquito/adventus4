@@ -5,9 +5,10 @@ fn main() {
         let source_code = std::fs::read_to_string(in_file).unwrap();
         let bytecode = Compiler::new(&source_code).compile();
         eprintln!("{bytecode:?}");
+        bytecode.pretty_print();
         // let types = Types::infer(&bytecode);
         // eprintln!("{types:?}");
-        let mut vm = VM::new(bytecode);
+        let mut vm = VM::new_main(&bytecode);
         vm.run();
     }
     // let root_node = tree.root_node();

@@ -71,6 +71,7 @@ export default grammar({
     with: $ => seq(
       $.type_constraint,
       "with",
+      $.expression,
     ),
     builtin: $ => choice(
       $.dup,

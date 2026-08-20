@@ -6,7 +6,10 @@ use std::{
 use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
-use crate::bytecode::{ByteCode, Op};
+use crate::{
+    bytecode::{ByteCode, Op},
+    vm::VM,
+};
 
 include!(concat!(env!("OUT_DIR"), "/grammar_ids.rs"));
 
@@ -78,9 +81,9 @@ impl<'s> Compiler<'s> {
         let def_id = self.bytecode.new_def(block_id);
         // Register the name of the definition now so that it can be referenced
         // recursively while compiling itself.
-        self.def_map.insert(name.to_string(), block_id);
+        self.def_map.insert(name.to_string(), def_id);
         if name == "main" {
-            self.bytecode.main_id = Some(block_id);
+            self.bytecode.main_id = Some(def_id);
         }
 
         {
@@ -212,21 +215,16 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
             eprintln!("Propo {prop_name}");
             props.push(prop_name);
-            // TODO how to represent obj at compile time vs run time
-            // compile time needs to know props
-            // run time needs to know length
             assert!(cursor.goto_next_sibling());
         }
         // TODO assume no collisions ¯\_(ツ)_/¯
-        let object_id = {
+        let obj_id = {
             let mut hasher = DefaultHasher::new();
             props[..].hash(&mut hasher);
             hasher.finish()
         };
-        self.def_compiler
-            .compiler
-            .object_ids
-            .insert(object_id, props);
+        self.def_compiler.compiler.object_ids.insert(obj_id, props);
+        self.push(Op::ObjectId(obj_id));
         assert!(cursor.goto_parent());
     }
     fn compile_builtin(&mut self, cursor: &mut TreeCursor) {
@@ -330,6 +328,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .iter()
             .position(|&p| p == prop_name)
             .expect("undefined prop");
+        eprintln!("OBJ BIND {obj_props:?} {prop_name} {prop_id}");
         self.push(Op::PushProp(prop_id));
         assert!(cursor.goto_parent());
     }
@@ -358,11 +357,58 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     }
     fn compile_malloc(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, MALLOC, "malloc");
-        todo!()
+        assert!(cursor.goto_first_child());
+        let obj_id = self.resolve_type_constraint(cursor);
+        let len = self
+            .def_compiler
+            .compiler
+            .object_ids
+            .get(&obj_id)
+            .unwrap()
+            .len();
+        self.push(Op::Malloc(len));
+        assert!(cursor.goto_parent());
     }
     fn compile_with(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, WITH, "with");
-        todo!()
+        assert!(cursor.goto_first_child());
+        let obj_id = self.resolve_type_constraint(cursor);
+        self.def_compiler.with_stack.push(obj_id);
+        let len = self
+            .def_compiler
+            .compiler
+            .object_ids
+            .get(&obj_id)
+            .unwrap()
+            .len();
+        self.push(Op::With(len));
+        assert!(cursor.goto_next_sibling());
+        assert!(cursor.goto_next_sibling());
+        self.compile_expression(cursor);
+        self.def_compiler.with_stack.pop().unwrap();
+        assert!(cursor.goto_parent());
+    }
+}
+impl BlockCompiler<'_, '_, '_> {
+    fn resolve_type_constraint(&mut self, cursor: &mut TreeCursor) -> u64 {
+        assert_node_id!(cursor, TYPE_CONSTRAINT, "type_constraint");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        let block_id = self.def_compiler.compiler.bytecode.new_block();
+        let mut block_compiler = BlockCompiler::new(self.def_compiler, block_id);
+        block_compiler.compile_expression(cursor);
+        eprintln!("bytecode {:?}", self.def_compiler.compiler.bytecode);
+        eprintln!("block_id {block_id}");
+
+        // TODO type check before running the VM
+
+        let mut vm = VM::new(&self.def_compiler.compiler.bytecode, 0, block_id);
+        vm.run();
+        let obj_id = vm.pop_from_stack() as u64;
+        assert_eq!(vm.stack_len(), 0);
+        eprintln!("obj id??? {obj_id}\n\n\n");
+        assert!(cursor.goto_parent());
+        obj_id
     }
 }
 
