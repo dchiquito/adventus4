@@ -118,6 +118,7 @@ impl<'a, 's> DefCompiler<'a, 's> {
         }
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
+        block_compiler.push(Op::Return);
         assert!(cursor.goto_parent());
     }
 }

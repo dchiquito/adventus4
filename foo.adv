@@ -1,19 +1,36 @@
-def Obj {x y z}
-def obj_sum [
-  (Obj) with [
-    4 >@x
-    @x @y + @z +
+
+def LinkList {value next}
+def new_list [
+  9999
+  (LinkList) malloc
+]
+def ll_len [
+  (LinkList) with [
+    @next 9999 == if [
+      1
+    ] else [
+      @next ll_len
+      1 +
+    ]
   ]
-  print
+]
+def ll_append [
+  >$value
+  (LinkList) with [
+    @next 9999 == if [
+      $value new_list >@next
+    ] else [
+      @next $value ll_append
+    ]
+  ]
 ]
 
-def objecto [
-  1 2 3
-  (Obj) malloc
-  obj_sum
-]
+
 
 def main [
-  objecto
+  11 new_list
+  dup 22 ll_append
+  dup 33 ll_append
+  ll_len
   print
 ]
