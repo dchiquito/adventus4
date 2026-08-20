@@ -1,5 +1,18 @@
 def rebind_add +
 
+def Obj {x y z}
+def obj_sum [
+  (Obj) with [
+    @x @y + @z +
+  ]
+]
+
+def objecto [
+  1 2 3
+  (Obj) malloc
+  obj_sum
+]
+
 def main [
   1 1 == >$t
   $t not >$f

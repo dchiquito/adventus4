@@ -72,6 +72,8 @@ impl Types {
                 OpCode::Swap => stack_mutation!(Int Int=>Int Int),
                 OpCode::BindLocal => stack_mutation!(Int=>),
                 OpCode::PushLocal => stack_mutation!(=>Int),
+                OpCode::BindProp => stack_mutation!(Int=>),
+                OpCode::PushProp => stack_mutation!(=>Int),
                 OpCode::Add => stack_mutation!(Int Int=>Int),
                 OpCode::Sub => stack_mutation!(Int Int=>Int),
                 OpCode::Mul => stack_mutation!(Int Int=>Int),
@@ -86,6 +88,9 @@ impl Types {
                 OpCode::Or => stack_mutation!(Bool Bool=>Bool),
                 OpCode::Not => stack_mutation!(Bool=>Bool),
                 OpCode::Print => stack_mutation!(Int=>Int),
+                OpCode::ObjectId => todo!(),
+                OpCode::Malloc => todo!(),
+                OpCode::With => todo!(),
             };
             def_type = def_type.chain(&sm);
         }

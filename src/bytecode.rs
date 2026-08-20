@@ -9,6 +9,8 @@ pub enum OpCode {
     Swap,
     BindLocal,
     PushLocal,
+    BindProp,
+    PushProp,
     Add,
     Sub,
     Mul,
@@ -23,68 +25,61 @@ pub enum OpCode {
     Or,
     Not,
     Print,
+    ObjectId,
+    Malloc,
+    With,
 }
-impl TryFrom<u64> for OpCode {
-    type Error = u64;
+macro_rules! opcode_u64_conversions {
+    ($($number:expr => $opcode:ident),*,) => {
+        impl TryFrom<u64> for OpCode {
+            type Error = u64;
 
-    fn try_from(value: u64) -> Result<Self, Self::Error> {
-        Ok(match value {
-            0x1 => OpCode::Literal,
-            0x2 => OpCode::Call,
-            0x3 => OpCode::Return,
-            0x4 => OpCode::GoTo,
-            0x5 => OpCode::GoToIf,
-            0x10 => OpCode::Dup,
-            0x11 => OpCode::Swap,
-            0x20 => OpCode::BindLocal,
-            0x21 => OpCode::PushLocal,
-            0x30 => OpCode::Add,
-            0x31 => OpCode::Sub,
-            0x32 => OpCode::Mul,
-            0x33 => OpCode::Div,
-            0x40 => OpCode::Eq,
-            0x41 => OpCode::Ne,
-            0x42 => OpCode::Gt,
-            0x43 => OpCode::Lt,
-            0x44 => OpCode::Gte,
-            0x45 => OpCode::Lte,
-            0x46 => OpCode::And,
-            0x47 => OpCode::Or,
-            0x48 => OpCode::Not,
-            0x50 => OpCode::Print,
-            _ => return Err(value),
-        })
-    }
-}
-impl From<OpCode> for u64 {
-    fn from(value: OpCode) -> Self {
-        match value {
-            OpCode::Literal => 0x1,
-            OpCode::Call => 0x2,
-            OpCode::Return => 0x3,
-            OpCode::GoTo => 0x4,
-            OpCode::GoToIf => 0x5,
-            OpCode::Dup => 0x10,
-            OpCode::Swap => 0x11,
-            OpCode::BindLocal => 0x20,
-            OpCode::PushLocal => 0x21,
-            OpCode::Add => 0x30,
-            OpCode::Sub => 0x31,
-            OpCode::Mul => 0x32,
-            OpCode::Div => 0x33,
-            OpCode::Eq => 0x40,
-            OpCode::Ne => 0x41,
-            OpCode::Gt => 0x42,
-            OpCode::Lt => 0x43,
-            OpCode::Gte => 0x44,
-            OpCode::Lte => 0x45,
-            OpCode::And => 0x46,
-            OpCode::Or => 0x47,
-            OpCode::Not => 0x48,
-            OpCode::Print => 0x50,
+            fn try_from(value: u64) -> Result<Self, Self::Error> {
+                Ok(match value {
+                    $($number => OpCode::$opcode),*,
+                    _ => return Err(value),
+                })
+            }
         }
-    }
+        impl From<OpCode> for u64 {
+            fn from(value: OpCode) -> Self {
+                match value {
+                    $(OpCode::$opcode => $number),*
+                }
+            }
+        }
+    };
 }
+opcode_u64_conversions!(
+    0x1 => Literal,
+    0x2 => Call,
+    0x3 => Return,
+    0x4 => GoTo,
+    0x5 => GoToIf,
+    0x10 => Dup,
+    0x11 => Swap,
+    0x20 => BindLocal,
+    0x21 => PushLocal,
+    0x22 => BindProp,
+    0x23 => PushProp,
+    0x30 => Add,
+    0x31 => Sub,
+    0x32 => Mul,
+    0x33 => Div,
+    0x40 => Eq,
+    0x41 => Ne,
+    0x42 => Gt,
+    0x43 => Lt,
+    0x44 => Gte,
+    0x45 => Lte,
+    0x46 => And,
+    0x47 => Or,
+    0x48 => Not,
+    0x50 => Print,
+    0x60 => ObjectId,
+    0x61 => Malloc,
+    0x62 => With,
+);
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
@@ -97,6 +92,8 @@ pub enum Op {
     Swap,
     BindLocal(usize),
     PushLocal(usize),
+    BindProp(usize),
+    PushProp(usize),
     Add,
     Sub,
     Mul,
@@ -111,6 +108,9 @@ pub enum Op {
     Or,
     Not,
     Print,
+    ObjectId(u64),
+    Malloc,
+    With,
 }
 impl From<Op> for OpCode {
     fn from(op: Op) -> Self {
@@ -124,6 +124,8 @@ impl From<Op> for OpCode {
             Op::Swap => OpCode::Swap,
             Op::BindLocal(_) => OpCode::BindLocal,
             Op::PushLocal(_) => OpCode::PushLocal,
+            Op::BindProp(_) => OpCode::BindProp,
+            Op::PushProp(_) => OpCode::PushProp,
             Op::Add => OpCode::Add,
             Op::Sub => OpCode::Sub,
             Op::Mul => OpCode::Mul,
@@ -138,6 +140,9 @@ impl From<Op> for OpCode {
             Op::Or => OpCode::Or,
             Op::Not => OpCode::Not,
             Op::Print => OpCode::Print,
+            Op::ObjectId(_) => OpCode::ObjectId,
+            Op::Malloc => OpCode::Malloc,
+            Op::With => OpCode::With,
         }
     }
 }
@@ -156,6 +161,7 @@ impl Block {
             Op::GoToIf(block_id) => Some(block_id as u64),
             Op::BindLocal(local_id) => Some(local_id as u64),
             Op::PushLocal(local_id) => Some(local_id as u64),
+            Op::ObjectId(obj_id) => Some(obj_id),
             _ => None,
         } {
             self.data.push(word)
@@ -194,6 +200,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Swap => Op::Swap,
             OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
             OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
+            OpCode::BindProp => Op::BindProp(self.next_word() as usize),
+            OpCode::PushProp => Op::PushProp(self.next_word() as usize),
             OpCode::Add => Op::Add,
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
@@ -208,6 +216,9 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
+            OpCode::ObjectId => Op::ObjectId(self.next_word()),
+            OpCode::Malloc => Op::Malloc,
+            OpCode::With => Op::With,
         };
         Some(op)
     }

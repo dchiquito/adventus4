@@ -44,6 +44,10 @@
           "named": true
         },
         {
+          "type": "malloc",
+          "named": true
+        },
+        {
           "type": "mul",
           "named": true
         },
@@ -69,6 +73,10 @@
         },
         {
           "type": "swap",
+          "named": true
+        },
+        {
+          "type": "with",
           "named": true
         }
       ]
@@ -150,6 +158,18 @@
         },
         {
           "type": "local_var",
+          "named": true
+        },
+        {
+          "type": "obj_bind",
+          "named": true
+        },
+        {
+          "type": "obj_var",
+          "named": true
+        },
+        {
+          "type": "object",
           "named": true
         }
       ]
@@ -235,6 +255,21 @@
     }
   },
   {
+    "type": "malloc",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "type_constraint",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "manual_signature",
     "named": true,
     "fields": {},
@@ -244,6 +279,51 @@
       "types": [
         {
           "type": "signature",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "obj_bind",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "obj_var",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "object",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "identifier",
           "named": true
         }
       ]
@@ -286,6 +366,36 @@
     "fields": {}
   },
   {
+    "type": "type_constraint",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "with",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "type_constraint",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "$",
     "named": false
   },
@@ -310,7 +420,15 @@
     "named": false
   },
   {
+    "type": ">@",
+    "named": false
+  },
+  {
     "type": "?",
+    "named": false
+  },
+  {
+    "type": "@",
     "named": false
   },
   {
@@ -382,6 +500,10 @@
     "named": true
   },
   {
+    "type": "malloc",
+    "named": false
+  },
+  {
     "type": "mul",
     "named": true
   },
@@ -416,5 +538,17 @@
   {
     "type": "swap",
     "named": true
+  },
+  {
+    "type": "with",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
   }
 ]

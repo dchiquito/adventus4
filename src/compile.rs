@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
@@ -27,15 +30,18 @@ pub struct Compiler<'s> {
     source: &'s str,
     bytecode: ByteCode,
     def_map: HashMap<String, usize>,
+    object_ids: HashMap<u64, Vec<&'s str>>,
 }
 impl<'s> Compiler<'s> {
     pub fn new(source: &'s str) -> Self {
         let bytecode = ByteCode::default();
         let def_map = HashMap::default();
+        let object_ids = HashMap::default();
         Self {
             source,
             bytecode,
             def_map,
+            object_ids,
         }
     }
 
@@ -62,7 +68,7 @@ impl<'s> Compiler<'s> {
         assert_eq!(cursor.node(), root);
         self.bytecode
     }
-    fn compile_def<'a>(&'a mut self, cursor: &mut TreeCursor) {
+    fn compile_def(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, DEF, "def");
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling());
@@ -89,14 +95,17 @@ struct DefCompiler<'a, 's> {
     compiler: &'a mut Compiler<'s>,
     def_id: usize,
     local_map: HashMap<String, usize>,
+    with_stack: Vec<u64>,
 }
 impl<'a, 's> DefCompiler<'a, 's> {
     fn new(compiler: &'a mut Compiler<'s>, def_id: usize) -> Self {
         let local_map = HashMap::default();
+        let with_stack = vec![];
         Self {
             compiler,
             def_id,
             local_map,
+            with_stack,
         }
     }
     fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: usize) {
@@ -131,9 +140,12 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             IDENTIFIER => self.compile_identifier(cursor),
             INT => self.compile_int(cursor),
             GROUPING => self.compile_grouping(cursor),
+            OBJECT => self.compile_object(cursor),
             BUILTIN => self.compile_builtin(cursor),
             LOCAL_BIND => self.compile_local_bind(cursor),
             LOCAL_VAR => self.compile_local_var(cursor),
+            OBJ_BIND => self.compile_obj_bind(cursor),
+            OBJ_VAR => self.compile_obj_var(cursor),
             IF => self.compile_if(cursor),
             _ => unreachable!(
                 "{} ({})",
@@ -191,6 +203,32 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         eprintln!("{:?}", cursor.node());
         assert!(cursor.goto_parent());
     }
+    fn compile_object(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, OBJECT, "object");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        let mut props = vec![];
+        while cursor.node().grammar_id() == IDENTIFIER {
+            let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
+            eprintln!("Propo {prop_name}");
+            props.push(prop_name);
+            // TODO how to represent obj at compile time vs run time
+            // compile time needs to know props
+            // run time needs to know length
+            assert!(cursor.goto_next_sibling());
+        }
+        // TODO assume no collisions ¯\_(ツ)_/¯
+        let object_id = {
+            let mut hasher = DefaultHasher::new();
+            props[..].hash(&mut hasher);
+            hasher.finish()
+        };
+        self.def_compiler
+            .compiler
+            .object_ids
+            .insert(object_id, props);
+        assert!(cursor.goto_parent());
+    }
     fn compile_builtin(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, BUILTIN, "builtin");
         assert!(cursor.goto_first_child());
@@ -211,6 +249,8 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             OR => self.compile_or(cursor),
             NOT => self.compile_not(cursor),
             PRINT => self.compile_print(cursor),
+            MALLOC => self.compile_malloc(cursor),
+            WITH => self.compile_with(cursor),
             _ => unreachable!(
                 "{} ({})",
                 cursor.node().grammar_name(),
@@ -254,6 +294,45 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         self.push(Op::PushLocal(*local_id));
         assert!(cursor.goto_parent());
     }
+    fn compile_obj_bind(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, OBJ_BIND, "obj_bind");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
+        eprintln!("  ob {:?}", prop_name);
+        let obj_id = self
+            .def_compiler
+            .with_stack
+            .last()
+            .expect("active with block");
+        let obj_props = self.def_compiler.compiler.object_ids.get(obj_id).unwrap();
+        let prop_id = obj_props
+            .iter()
+            .position(|&p| p == prop_name)
+            .expect("undefined prop");
+        self.push(Op::BindProp(prop_id));
+
+        assert!(cursor.goto_parent());
+    }
+    fn compile_obj_var(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, OBJ_VAR, "obj_var");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling());
+        let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
+        eprintln!("  ov {:?}", prop_name);
+        let obj_id = self
+            .def_compiler
+            .with_stack
+            .last()
+            .expect("active with block");
+        let obj_props = self.def_compiler.compiler.object_ids.get(obj_id).unwrap();
+        let prop_id = obj_props
+            .iter()
+            .position(|&p| p == prop_name)
+            .expect("undefined prop");
+        self.push(Op::PushProp(prop_id));
+        assert!(cursor.goto_parent());
+    }
     fn compile_if(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IF, "if");
         assert!(cursor.goto_first_child());
@@ -276,6 +355,14 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         self.push(Op::GoTo(finally_block_id));
         self.block_id = finally_block_id;
         assert!(cursor.goto_parent());
+    }
+    fn compile_malloc(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, MALLOC, "malloc");
+        todo!()
+    }
+    fn compile_with(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, WITH, "with");
+        todo!()
     }
 }
 

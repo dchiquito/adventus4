@@ -33,6 +33,21 @@ export default grammar({
       "]",
     ),
 
+    object: $ => seq(
+      "{",
+      repeat(
+        $.identifier,
+        // TODO types
+      ),
+      "}",
+    ),
+
+    type_constraint: $ => seq(
+      "(",
+      $.expression,
+      ")",
+    ),
+
     dup: $ => "dup",
     swap: $ => "swap",
     add: $ => "+",
@@ -49,6 +64,14 @@ export default grammar({
     or: $ => "or",
     not: $ => "not",
     print: $ => "print",
+    malloc: $ => seq(
+      $.type_constraint,
+      "malloc",
+    ),
+    with: $ => seq(
+      $.type_constraint,
+      "with",
+    ),
     builtin: $ => choice(
       $.dup,
       $.swap,
@@ -66,10 +89,14 @@ export default grammar({
       $.or,
       $.not,
       $.print,
+      $.malloc,
+      $.with,
     ),
 
     local_bind: $ => seq(">$", $.identifier),
     local_var: $ => seq("$", $.identifier),
+    obj_bind: $ => seq(">@", $.identifier),
+    obj_var: $ => seq("@", $.identifier),
 
     if: $ => prec.left(1, seq(
       "if", $.expression,
@@ -81,9 +108,12 @@ export default grammar({
     expression: $ => choice(
       $.int,
       $.grouping,
+      $.object,
       $.builtin,
       $.local_bind,
       $.local_var,
+      $.obj_bind,
+      $.obj_var,
       $.if,
       $.identifier,
     ),

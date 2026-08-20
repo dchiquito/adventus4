@@ -88,6 +88,43 @@
         }
       ]
     },
+    "object": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "type_constraint": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
     "dup": {
       "type": "STRING",
       "value": "dup"
@@ -151,6 +188,32 @@
     "print": {
       "type": "STRING",
       "value": "print"
+    },
+    "malloc": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "type_constraint"
+        },
+        {
+          "type": "STRING",
+          "value": "malloc"
+        }
+      ]
+    },
+    "with": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "type_constraint"
+        },
+        {
+          "type": "STRING",
+          "value": "with"
+        }
+      ]
     },
     "builtin": {
       "type": "CHOICE",
@@ -218,6 +281,14 @@
         {
           "type": "SYMBOL",
           "name": "print"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "malloc"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "with"
         }
       ]
     },
@@ -240,6 +311,32 @@
         {
           "type": "STRING",
           "value": "$"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        }
+      ]
+    },
+    "obj_bind": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": ">@"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        }
+      ]
+    },
+    "obj_var": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "@"
         },
         {
           "type": "SYMBOL",
@@ -302,6 +399,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "object"
+        },
+        {
+          "type": "SYMBOL",
           "name": "builtin"
         },
         {
@@ -311,6 +412,14 @@
         {
           "type": "SYMBOL",
           "name": "local_var"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "obj_bind"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "obj_var"
         },
         {
           "type": "SYMBOL",

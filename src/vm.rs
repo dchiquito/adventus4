@@ -40,6 +40,8 @@ impl Iterator for VM {
             OpCode::Swap => Op::Swap,
             OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
             OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
+            OpCode::BindProp => Op::BindProp(self.next_word() as usize),
+            OpCode::PushProp => Op::PushProp(self.next_word() as usize),
             OpCode::Add => Op::Add,
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
@@ -54,6 +56,9 @@ impl Iterator for VM {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
+            OpCode::ObjectId => Op::ObjectId(self.next_word()),
+            OpCode::Malloc => Op::Malloc,
+            OpCode::With => Op::With,
         };
         Some(op)
     }
@@ -92,6 +97,8 @@ impl VM {
             Op::Swap => self.op_swap(),
             Op::BindLocal(local_id) => self.op_bind_local(local_id),
             Op::PushLocal(local_id) => self.op_push_local(local_id),
+            Op::BindProp(prop_id) => self.op_bind_prop(prop_id),
+            Op::PushProp(prop_id) => self.op_push_prop(prop_id),
             Op::Add => self.op_add(),
             Op::Sub => self.op_sub(),
             Op::Mul => self.op_mul(),
@@ -106,6 +113,9 @@ impl VM {
             Op::Or => self.op_or(),
             Op::Not => self.op_not(),
             Op::Print => self.op_print(),
+            Op::ObjectId(obj_id) => self.op_object_id(obj_id),
+            Op::Malloc => self.op_malloc(),
+            Op::With => self.op_with(),
         }
     }
 }
@@ -162,6 +172,12 @@ impl VM {
     fn op_push_local(&mut self, local_id: usize) {
         let value = self.locals[local_id];
         self.stack.push(value);
+    }
+    fn op_bind_prop(&mut self, prop_id: usize) {
+        todo!()
+    }
+    fn op_push_prop(&mut self, prop_id: usize) {
+        todo!();
     }
     fn op_add(&mut self) {
         let b = self.stack.pop().expect("value on stack");
@@ -230,5 +246,14 @@ impl VM {
     fn op_print(&mut self) {
         let value = self.stack.last().expect("value on stack");
         println!("{value}");
+    }
+    fn op_object_id(&mut self, obj_id: u64) {
+        self.stack.push(obj_id as i64);
+    }
+    fn op_malloc(&mut self) {
+        todo!()
+    }
+    fn op_with(&mut self) {
+        todo!()
     }
 }
