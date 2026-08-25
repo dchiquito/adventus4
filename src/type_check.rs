@@ -90,7 +90,6 @@ impl Types {
                 OpCode::Print => stack_mutation!(Int=>Int),
                 OpCode::ObjectId => todo!(),
                 OpCode::Malloc => todo!(),
-                OpCode::With => todo!(),
             };
             def_type = def_type.chain(&sm);
         }

@@ -81,11 +81,6 @@ export default grammar({
       $.type_constraint,
       $.keyword_malloc,
     ),
-    with: $ => seq(
-      $.type_constraint,
-      $.keyword_with,
-      $.expression,
-    ),
     builtin: $ => choice(
       $.dup,
       $.swap,
@@ -104,13 +99,12 @@ export default grammar({
       $.not,
       $.print,
       $.malloc,
-      $.with,
     ),
 
     local_bind: $ => seq(">$", $.identifier),
     local_var: $ => seq("$", $.identifier),
-    obj_bind: $ => seq(">@", $.identifier),
-    obj_var: $ => seq("@", $.identifier),
+    prop_bind: $ => seq(">.", $.identifier),
+    prop_var: $ => seq(".", $.identifier),
 
     if: $ => prec.left(1, seq(
       $.keyword_if, $.expression,
@@ -126,8 +120,8 @@ export default grammar({
       $.builtin,
       $.local_bind,
       $.local_var,
-      $.obj_bind,
-      $.obj_var,
+      $.prop_bind,
+      $.prop_var,
       $.if,
       $.identifier,
     ),

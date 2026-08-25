@@ -6,23 +6,21 @@ def new_list [
 ]
 
 def ll_len [
-  (LinkList) with [
-    @next -1 == if [
-      1
-    ] else [
-      @next ll_len
-      1 +
-    ]
+  .next >$next
+  $next -1 == if [
+    1
+  ] else [
+    $next ll_len
+    1 +
   ]
 ]
 def ll_append [
   >$value
-  (LinkList) with [
-    @next -1 == if [
-      $value new_list >@next
-    ] else [
-      @next $value ll_append
-    ]
+  >$node
+  $node.next -1 == if [
+    $value new_list $node>.next
+  ] else [
+    $node.next $value ll_append
   ]
 ]
 

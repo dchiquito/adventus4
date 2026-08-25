@@ -250,23 +250,6 @@
         }
       ]
     },
-    "with": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "type_constraint"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "keyword_with"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "expression"
-        }
-      ]
-    },
     "builtin": {
       "type": "CHOICE",
       "members": [
@@ -337,10 +320,6 @@
         {
           "type": "SYMBOL",
           "name": "malloc"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "with"
         }
       ]
     },
@@ -370,12 +349,12 @@
         }
       ]
     },
-    "obj_bind": {
+    "prop_bind": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
-          "value": ">@"
+          "value": ">."
         },
         {
           "type": "SYMBOL",
@@ -383,12 +362,12 @@
         }
       ]
     },
-    "obj_var": {
+    "prop_var": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
-          "value": "@"
+          "value": "."
         },
         {
           "type": "SYMBOL",
@@ -467,11 +446,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "obj_bind"
+          "name": "prop_bind"
         },
         {
           "type": "SYMBOL",
-          "name": "obj_var"
+          "name": "prop_var"
         },
         {
           "type": "SYMBOL",

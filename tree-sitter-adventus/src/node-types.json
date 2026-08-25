@@ -74,10 +74,6 @@
         {
           "type": "swap",
           "named": true
-        },
-        {
-          "type": "with",
-          "named": true
         }
       ]
     }
@@ -165,15 +161,15 @@
           "named": true
         },
         {
-          "type": "obj_bind",
-          "named": true
-        },
-        {
-          "type": "obj_var",
-          "named": true
-        },
-        {
           "type": "object",
+          "named": true
+        },
+        {
+          "type": "prop_bind",
+          "named": true
+        },
+        {
+          "type": "prop_var",
           "named": true
         }
       ]
@@ -309,36 +305,6 @@
     }
   },
   {
-    "type": "obj_bind",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "obj_var",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "object",
     "named": true,
     "fields": {},
@@ -356,6 +322,36 @@
         },
         {
           "type": "symbol_rbrace",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "prop_bind",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "prop_var",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
           "named": true
         }
       ]
@@ -433,30 +429,11 @@
     }
   },
   {
-    "type": "with",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expression",
-          "named": true
-        },
-        {
-          "type": "keyword_with",
-          "named": true
-        },
-        {
-          "type": "type_constraint",
-          "named": true
-        }
-      ]
-    }
+    "type": "$",
+    "named": false
   },
   {
-    "type": "$",
+    "type": ".",
     "named": false
   },
   {
@@ -468,15 +445,11 @@
     "named": false
   },
   {
-    "type": ">@",
+    "type": ">.",
     "named": false
   },
   {
     "type": "?",
-    "named": false
-  },
-  {
-    "type": "@",
     "named": false
   },
   {
@@ -533,10 +506,6 @@
   },
   {
     "type": "keyword_malloc",
-    "named": true
-  },
-  {
-    "type": "keyword_with",
     "named": true
   },
   {

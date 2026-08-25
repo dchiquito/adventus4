@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Copy, Clone, Debug)]
 pub enum OpCode {
     Literal,
@@ -27,7 +29,6 @@ pub enum OpCode {
     Print,
     ObjectId,
     Malloc,
-    With,
 }
 macro_rules! opcode_u64_conversions {
     ($($number:expr => $opcode:ident),*,) => {
@@ -78,8 +79,29 @@ opcode_u64_conversions!(
     0x50 => Print,
     0x60 => ObjectId,
     0x61 => Malloc,
-    0x62 => With,
 );
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct PropId(u64);
+impl PropId {
+    pub fn new(prop_id: u64) -> Self {
+        Self(prop_id)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ObjectId(u64);
+impl ObjectId {
+    pub fn new(prop_id: u64) -> Self {
+        Self(prop_id)
+    }
+    pub fn to_value(&self) -> i64 {
+        self.0 as i64
+    }
+    pub fn from_value(value: i64) -> Self {
+        Self(value as u64)
+    }
+}
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
@@ -92,8 +114,8 @@ pub enum Op {
     Swap,
     BindLocal(usize),
     PushLocal(usize),
-    BindProp(usize),
-    PushProp(usize),
+    BindProp(PropId),
+    PushProp(PropId),
     Add,
     Sub,
     Mul,
@@ -108,9 +130,8 @@ pub enum Op {
     Or,
     Not,
     Print,
-    ObjectId(u64),
-    Malloc(usize),
-    With(usize),
+    ObjectId(ObjectId),
+    Malloc(ObjectId),
 }
 impl From<Op> for OpCode {
     fn from(op: Op) -> Self {
@@ -142,7 +163,6 @@ impl From<Op> for OpCode {
             Op::Print => OpCode::Print,
             Op::ObjectId(_) => OpCode::ObjectId,
             Op::Malloc(_) => OpCode::Malloc,
-            Op::With(_) => OpCode::With,
         }
     }
 }
@@ -161,11 +181,10 @@ impl Block {
             Op::GoToIf(block_id) => Some(block_id as u64),
             Op::BindLocal(local_id) => Some(local_id as u64),
             Op::PushLocal(local_id) => Some(local_id as u64),
-            Op::BindProp(prop_id) => Some(prop_id as u64),
-            Op::PushProp(prop_id) => Some(prop_id as u64),
-            Op::ObjectId(obj_id) => Some(obj_id),
-            Op::Malloc(len) => Some(len as u64),
-            Op::With(len) => Some(len as u64),
+            Op::BindProp(prop_id) => Some(prop_id.0),
+            Op::PushProp(prop_id) => Some(prop_id.0),
+            Op::ObjectId(obj_id) => Some(obj_id.0),
+            Op::Malloc(obj_id) => Some(obj_id.0),
             _ => None,
         } {
             self.data.push(word)
@@ -209,8 +228,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Swap => Op::Swap,
             OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
             OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
-            OpCode::BindProp => Op::BindProp(self.next_word() as usize),
-            OpCode::PushProp => Op::PushProp(self.next_word() as usize),
+            OpCode::BindProp => Op::BindProp(PropId(self.next_word() as u64)),
+            OpCode::PushProp => Op::PushProp(PropId(self.next_word() as u64)),
             OpCode::Add => Op::Add,
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
@@ -225,9 +244,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
-            OpCode::ObjectId => Op::ObjectId(self.next_word()),
-            OpCode::Malloc => Op::Malloc(self.next_word() as usize),
-            OpCode::With => Op::With(self.next_word() as usize),
+            OpCode::ObjectId => Op::ObjectId(ObjectId::new(self.next_word() as u64)),
+            OpCode::Malloc => Op::Malloc(ObjectId::new(self.next_word() as u64)),
         };
         Some(op)
     }
@@ -262,6 +280,7 @@ pub struct ByteCode {
     pub blocks: Vec<Block>,
     pub defs: Vec<Definition>,
     pub main_id: Option<usize>,
+    pub object_ids: HashMap<ObjectId, Vec<PropId>>,
 }
 
 impl ByteCode {
