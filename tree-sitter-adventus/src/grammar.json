@@ -25,10 +25,6 @@
       "type": "STRING",
       "value": "malloc"
     },
-    "keyword_with": {
-      "type": "STRING",
-      "value": "with"
-    },
     "symbol_lbracket": {
       "type": "STRING",
       "value": "["
@@ -173,18 +169,6 @@
         }
       ]
     },
-    "dup": {
-      "type": "STRING",
-      "value": "dup"
-    },
-    "swap": {
-      "type": "STRING",
-      "value": "swap"
-    },
-    "pop": {
-      "type": "STRING",
-      "value": "pop"
-    },
     "add": {
       "type": "STRING",
       "value": "+"
@@ -225,22 +209,6 @@
       "type": "STRING",
       "value": "<="
     },
-    "and": {
-      "type": "STRING",
-      "value": "and"
-    },
-    "or": {
-      "type": "STRING",
-      "value": "or"
-    },
-    "not": {
-      "type": "STRING",
-      "value": "not"
-    },
-    "print": {
-      "type": "STRING",
-      "value": "print"
-    },
     "malloc": {
       "type": "SEQ",
       "members": [
@@ -257,18 +225,6 @@
     "builtin": {
       "type": "CHOICE",
       "members": [
-        {
-          "type": "SYMBOL",
-          "name": "dup"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "swap"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "pop"
-        },
         {
           "type": "SYMBOL",
           "name": "add"
@@ -308,22 +264,6 @@
         {
           "type": "SYMBOL",
           "name": "lte"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "and"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "or"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "not"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "print"
         },
         {
           "type": "SYMBOL",

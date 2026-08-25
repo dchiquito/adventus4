@@ -13,7 +13,6 @@
 (keyword_if) @keyword.conditional
 (keyword_else) @keyword.conditional
 (keyword_malloc) @keyword
-(keyword_with) @keyword
 (symbol_lbracket) @punctuation.bracket
 (symbol_rbracket) @punctuation.bracket
 (symbol_lparen) @punctuation.bracket

@@ -12,15 +12,7 @@
           "named": true
         },
         {
-          "type": "and",
-          "named": true
-        },
-        {
           "type": "div",
-          "named": true
-        },
-        {
-          "type": "dup",
           "named": true
         },
         {
@@ -56,27 +48,7 @@
           "named": true
         },
         {
-          "type": "not",
-          "named": true
-        },
-        {
-          "type": "or",
-          "named": true
-        },
-        {
-          "type": "pop",
-          "named": true
-        },
-        {
-          "type": "print",
-          "named": true
-        },
-        {
           "type": "sub",
-          "named": true
-        },
-        {
-          "type": "swap",
           "named": true
         }
       ]
@@ -469,15 +441,7 @@
     "named": true
   },
   {
-    "type": "and",
-    "named": true
-  },
-  {
     "type": "div",
-    "named": true
-  },
-  {
-    "type": "dup",
     "named": true
   },
   {
@@ -533,31 +497,11 @@
     "named": true
   },
   {
-    "type": "not",
-    "named": true
-  },
-  {
-    "type": "or",
-    "named": true
-  },
-  {
-    "type": "pop",
-    "named": true
-  },
-  {
     "type": "positive_int",
     "named": true
   },
   {
-    "type": "print",
-    "named": true
-  },
-  {
     "type": "sub",
-    "named": true
-  },
-  {
-    "type": "swap",
     "named": true
   },
   {

@@ -29,6 +29,16 @@ macro_rules! assert_node_id {
     };
 }
 
+enum Builtin {
+    Dup,
+    Swap,
+    Pop,
+    And,
+    Or,
+    Not,
+    Print,
+}
+
 pub struct Compiler<'s> {
     source: &'s str,
     bytecode: ByteCode,
@@ -165,11 +175,34 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
         assert!(cursor.goto_parent());
     }
+    fn lookup_builtin(&self, name: &str) -> Option<Builtin>{
+        match name {
+            "dup" => Some(Builtin::Dup),
+            "swap" => Some(Builtin::Swap),
+            "pop" => Some(Builtin::Pop),
+            "and" => Some(Builtin::And),
+            "or" => Some(Builtin::Or),
+            "not" => Some(Builtin::Not),
+            "print" => Some(Builtin::Print),
+            _ => None
+        }
+    }
     fn compile_identifier(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IDENTIFIER, "identifier");
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("id {string_repr}");
-        if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
+        if let Some(builtin) = self.lookup_builtin(string_repr) {
+            let op = match builtin {
+                Builtin::Dup => Op::Dup,
+                Builtin::Swap => Op::Swap,
+                Builtin::Pop => Op::Pop,
+                Builtin::And => Op::And,
+                Builtin::Or => Op::Or,
+                Builtin::Not => Op::Not,
+                Builtin::Print => Op::Print,
+            };
+            self.push(op);
+        } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
             eprintln!("Looked up {def_id}");
             self.push(Op::Call(def_id));
         } else {
@@ -245,7 +278,11 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             hasher.finish()
         };
         let obj_id = ObjectId::new(obj_id);
-        self.def_compiler.compiler.bytecode.object_ids.insert(obj_id, props);
+        self.def_compiler
+            .compiler
+            .bytecode
+            .object_ids
+            .insert(obj_id, props);
         self.push(Op::ObjectId(obj_id));
         assert!(cursor.goto_parent());
     }
@@ -253,9 +290,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         assert_node_id!(cursor, BUILTIN, "builtin");
         assert!(cursor.goto_first_child());
         match cursor.node().grammar_id() {
-            DUP => self.compile_dup(cursor),
-            SWAP => self.compile_swap(cursor),
-            POP => self.compile_pop(cursor),
             ADD => self.compile_add(cursor),
             SUB => self.compile_sub(cursor),
             MUL => self.compile_mul(cursor),
@@ -266,10 +300,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             LT => self.compile_lt(cursor),
             GTE => self.compile_gte(cursor),
             LTE => self.compile_lte(cursor),
-            AND => self.compile_and(cursor),
-            OR => self.compile_or(cursor),
-            NOT => self.compile_not(cursor),
-            PRINT => self.compile_print(cursor),
             MALLOC => self.compile_malloc(cursor),
             _ => unreachable!(
                 "{} ({})",
@@ -399,9 +429,6 @@ macro_rules! compile_builtin_method {
     };
 }
 impl BlockCompiler<'_, '_, '_> {
-    compile_builtin_method!(compile_dup, dup, Dup, DUP);
-    compile_builtin_method!(compile_swap, swap, Swap, SWAP);
-    compile_builtin_method!(compile_pop, pop, Pop, POP);
     compile_builtin_method!(compile_add, add, Add, ADD);
     compile_builtin_method!(compile_sub, sub, Sub, SUB);
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
@@ -412,8 +439,4 @@ impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_lt, lt, Lt, LT);
     compile_builtin_method!(compile_gte, gte, Gte, GTE);
     compile_builtin_method!(compile_lte, lte, Lte, LTE);
-    compile_builtin_method!(compile_and, and, And, AND);
-    compile_builtin_method!(compile_or, or, Or, OR);
-    compile_builtin_method!(compile_not, not, Not, NOT);
-    compile_builtin_method!(compile_print, print, Print, PRINT);
 }
