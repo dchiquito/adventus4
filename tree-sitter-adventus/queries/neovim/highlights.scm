@@ -2,8 +2,8 @@
 
 (local_bind) @variable
 (local_var) @variable
-(prop_bind) @variable
-(prop_var) @variable
+(prop_bind (identifier) @variable.member)
+(prop_var (identifier) @variable.member)
 
 (expression (identifier) @function.call)
 (def (identifier) @function)
