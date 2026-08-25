@@ -6,11 +6,12 @@ def new_list [
 ]
 
 def ll_len [
-  .next >$next
-  $next -1 == if [
+  .next
+  dup -1 == if [
+    pop
     1
   ] else [
-    $next ll_len
+    ll_len
     1 +
   ]
 ]

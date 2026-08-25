@@ -44,6 +44,7 @@ impl Iterator for VM<'_> {
             OpCode::GoToIf => Op::GoToIf(self.next_word() as usize),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
+            OpCode::Pop => Op::Pop,
             OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
             OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
             OpCode::BindProp => Op::BindProp(PropId::new(self.next_word() as u64)),
@@ -105,6 +106,7 @@ impl<'a> VM<'a> {
             Op::GoToIf(block_id) => self.op_go_to_if(block_id),
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap(),
+            Op::Pop => self.op_pop(),
             Op::BindLocal(local_id) => self.op_bind_local(local_id),
             Op::PushLocal(local_id) => self.op_push_local(local_id),
             Op::BindProp(prop_id) => self.op_bind_prop(prop_id),
@@ -178,6 +180,9 @@ impl VM<'_> {
         let a = self.stack.pop().unwrap();
         self.stack.push(b);
         self.stack.push(a);
+    }
+    fn op_pop(&mut self) {
+        self.stack.pop().unwrap();
     }
     fn op_bind_local(&mut self, local_id: usize) {
         let value = self.stack.pop().unwrap();

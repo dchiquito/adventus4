@@ -181,6 +181,10 @@
       "type": "STRING",
       "value": "swap"
     },
+    "pop": {
+      "type": "STRING",
+      "value": "pop"
+    },
     "add": {
       "type": "STRING",
       "value": "+"
@@ -260,6 +264,10 @@
         {
           "type": "SYMBOL",
           "name": "swap"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "pop"
         },
         {
           "type": "SYMBOL",

@@ -70,6 +70,7 @@ impl Types {
                 OpCode::GoToIf => todo!(),
                 OpCode::Dup => stack_mutation!(Int=>Int Int),
                 OpCode::Swap => stack_mutation!(Int Int=>Int Int),
+                OpCode::Pop => stack_mutation!(Int=>),
                 OpCode::BindLocal => stack_mutation!(Int=>),
                 OpCode::PushLocal => stack_mutation!(=>Int),
                 OpCode::BindProp => stack_mutation!(Int=>),

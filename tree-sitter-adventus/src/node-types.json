@@ -64,6 +64,10 @@
           "named": true
         },
         {
+          "type": "pop",
+          "named": true
+        },
+        {
           "type": "print",
           "named": true
         },
@@ -534,6 +538,10 @@
   },
   {
     "type": "or",
+    "named": true
+  },
+  {
+    "type": "pop",
     "named": true
   },
   {

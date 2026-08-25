@@ -63,6 +63,7 @@ export default grammar({
 
     dup: $ => "dup",
     swap: $ => "swap",
+    pop: $ => "pop",
     add: $ => "+",
     sub: $ => "-",
     mul: $ => "*",
@@ -84,6 +85,7 @@ export default grammar({
     builtin: $ => choice(
       $.dup,
       $.swap,
+      $.pop,
       $.add,
       $.sub,
       $.mul,

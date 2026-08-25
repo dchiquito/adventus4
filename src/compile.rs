@@ -255,6 +255,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         match cursor.node().grammar_id() {
             DUP => self.compile_dup(cursor),
             SWAP => self.compile_swap(cursor),
+            POP => self.compile_pop(cursor),
             ADD => self.compile_add(cursor),
             SUB => self.compile_sub(cursor),
             MUL => self.compile_mul(cursor),
@@ -400,6 +401,7 @@ macro_rules! compile_builtin_method {
 impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_dup, dup, Dup, DUP);
     compile_builtin_method!(compile_swap, swap, Swap, SWAP);
+    compile_builtin_method!(compile_pop, pop, Pop, POP);
     compile_builtin_method!(compile_add, add, Add, ADD);
     compile_builtin_method!(compile_sub, sub, Sub, SUB);
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
