@@ -103,6 +103,10 @@
           "named": true
         },
         {
+          "type": "keyword_def",
+          "named": true
+        },
+        {
           "type": "manual_signature",
           "named": true
         }
@@ -181,10 +185,18 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "expression",
+          "named": true
+        },
+        {
+          "type": "symbol_lbracket",
+          "named": true
+        },
+        {
+          "type": "symbol_rbracket",
           "named": true
         }
       ]
@@ -200,6 +212,14 @@
       "types": [
         {
           "type": "expression",
+          "named": true
+        },
+        {
+          "type": "keyword_else",
+          "named": true
+        },
+        {
+          "type": "keyword_if",
           "named": true
         }
       ]
@@ -259,9 +279,13 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "keyword_malloc",
+          "named": true
+        },
         {
           "type": "type_constraint",
           "named": true
@@ -320,10 +344,18 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "symbol_lbrace",
+          "named": true
+        },
+        {
+          "type": "symbol_rbrace",
           "named": true
         }
       ]
@@ -335,8 +367,20 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
+        {
+          "type": "symbol_arrow",
+          "named": true
+        },
+        {
+          "type": "symbol_lparen",
+          "named": true
+        },
+        {
+          "type": "symbol_rparen",
+          "named": true
+        },
         {
           "type": "type",
           "named": true
@@ -370,11 +414,19 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "expression",
+          "named": true
+        },
+        {
+          "type": "symbol_lparen",
+          "named": true
+        },
+        {
+          "type": "symbol_rparen",
           "named": true
         }
       ]
@@ -393,6 +445,10 @@
           "named": true
         },
         {
+          "type": "keyword_with",
+          "named": true
+        },
+        {
           "type": "type_constraint",
           "named": true
         }
@@ -401,18 +457,6 @@
   },
   {
     "type": "$",
-    "named": false
-  },
-  {
-    "type": "(",
-    "named": false
-  },
-  {
-    "type": ")",
-    "named": false
-  },
-  {
-    "type": "->",
     "named": false
   },
   {
@@ -444,14 +488,6 @@
     "named": false
   },
   {
-    "type": "[",
-    "named": false
-  },
-  {
-    "type": "]",
-    "named": false
-  },
-  {
     "type": "add",
     "named": true
   },
@@ -460,20 +496,12 @@
     "named": true
   },
   {
-    "type": "def",
-    "named": false
-  },
-  {
     "type": "div",
     "named": true
   },
   {
     "type": "dup",
     "named": true
-  },
-  {
-    "type": "else",
-    "named": false
   },
   {
     "type": "eq",
@@ -492,8 +520,24 @@
     "named": true
   },
   {
-    "type": "if",
-    "named": false
+    "type": "keyword_def",
+    "named": true
+  },
+  {
+    "type": "keyword_else",
+    "named": true
+  },
+  {
+    "type": "keyword_if",
+    "named": true
+  },
+  {
+    "type": "keyword_malloc",
+    "named": true
+  },
+  {
+    "type": "keyword_with",
+    "named": true
   },
   {
     "type": "lt",
@@ -502,10 +546,6 @@
   {
     "type": "lte",
     "named": true
-  },
-  {
-    "type": "malloc",
-    "named": false
   },
   {
     "type": "mul",
@@ -544,15 +584,31 @@
     "named": true
   },
   {
-    "type": "with",
-    "named": false
+    "type": "symbol_arrow",
+    "named": true
   },
   {
-    "type": "{",
-    "named": false
+    "type": "symbol_lbrace",
+    "named": true
   },
   {
-    "type": "}",
-    "named": false
+    "type": "symbol_lbracket",
+    "named": true
+  },
+  {
+    "type": "symbol_lparen",
+    "named": true
+  },
+  {
+    "type": "symbol_rbrace",
+    "named": true
+  },
+  {
+    "type": "symbol_rbracket",
+    "named": true
+  },
+  {
+    "type": "symbol_rparen",
+    "named": true
   }
 ]

@@ -13,8 +13,21 @@ export default grammar({
   rules: {
     source_file: $ => repeat($.def),
 
+    keyword_def: $ => "def",
+    keyword_if: $ => "if",
+    keyword_else: $ => "else",
+    keyword_malloc: $ => "malloc",
+    keyword_with: $ => "with",
+    symbol_lbracket: $ => "[",
+    symbol_rbracket: $ => "]",
+    symbol_lparen: $ => "(",
+    symbol_rparen: $ => ")",
+    symbol_lbrace: $ => "{",
+    symbol_rbrace: $ => "}",
+    symbol_arrow: $ => "->",
+
     def: $ => seq(
-      "def",
+      $.keyword_def,
       $.identifier,
       optional(choice($.manual_signature, $.doc_signature)),
       $.expression,
@@ -28,24 +41,24 @@ export default grammar({
     ),
 
     grouping: $ => seq(
-      "[",
+      $.symbol_lbracket,
       repeat($.expression),
-      "]",
+      $.symbol_rbracket,
     ),
 
     object: $ => seq(
-      "{",
+      $.symbol_lbrace,
       repeat(
         $.identifier,
         // TODO types
       ),
-      "}",
+      $.symbol_rbrace,
     ),
 
     type_constraint: $ => seq(
-      "(",
+      $.symbol_lparen,
       $.expression,
-      ")",
+      $.symbol_rparen,
     ),
 
     dup: $ => "dup",
@@ -66,11 +79,11 @@ export default grammar({
     print: $ => "print",
     malloc: $ => seq(
       $.type_constraint,
-      "malloc",
+      $.keyword_malloc,
     ),
     with: $ => seq(
       $.type_constraint,
-      "with",
+      $.keyword_with,
       $.expression,
     ),
     builtin: $ => choice(
@@ -100,8 +113,8 @@ export default grammar({
     obj_var: $ => seq("@", $.identifier),
 
     if: $ => prec.left(1, seq(
-      "if", $.expression,
-      optional(seq("else", $.expression)),
+      $.keyword_if, $.expression,
+      optional(seq($.keyword_else, $.expression)),
     )),
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -122,11 +135,11 @@ export default grammar({
     manual_signature: $ => seq(":", $.signature),
     doc_signature: $ => seq("?", $.signature),
     signature: $ => seq(
-      "(",
+      $.symbol_lparen,
       repeat($.type),
-      "->",
+      $.symbol_arrow,
       repeat($.type),
-      ")",
+      $.symbol_rparen,
     ),
 
     type: $ => choice(

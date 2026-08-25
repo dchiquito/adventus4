@@ -4,6 +4,7 @@ def new_list [
   9999
   (LinkList) malloc
 ]
+
 def ll_len [
   (LinkList) with [
     @next 9999 == if [

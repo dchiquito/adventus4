@@ -9,12 +9,60 @@
         "name": "def"
       }
     },
+    "keyword_def": {
+      "type": "STRING",
+      "value": "def"
+    },
+    "keyword_if": {
+      "type": "STRING",
+      "value": "if"
+    },
+    "keyword_else": {
+      "type": "STRING",
+      "value": "else"
+    },
+    "keyword_malloc": {
+      "type": "STRING",
+      "value": "malloc"
+    },
+    "keyword_with": {
+      "type": "STRING",
+      "value": "with"
+    },
+    "symbol_lbracket": {
+      "type": "STRING",
+      "value": "["
+    },
+    "symbol_rbracket": {
+      "type": "STRING",
+      "value": "]"
+    },
+    "symbol_lparen": {
+      "type": "STRING",
+      "value": "("
+    },
+    "symbol_rparen": {
+      "type": "STRING",
+      "value": ")"
+    },
+    "symbol_lbrace": {
+      "type": "STRING",
+      "value": "{"
+    },
+    "symbol_rbrace": {
+      "type": "STRING",
+      "value": "}"
+    },
+    "symbol_arrow": {
+      "type": "STRING",
+      "value": "->"
+    },
     "def": {
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "def"
+          "type": "SYMBOL",
+          "name": "keyword_def"
         },
         {
           "type": "SYMBOL",
@@ -72,8 +120,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "["
+          "type": "SYMBOL",
+          "name": "symbol_lbracket"
         },
         {
           "type": "REPEAT",
@@ -83,8 +131,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "]"
+          "type": "SYMBOL",
+          "name": "symbol_rbracket"
         }
       ]
     },
@@ -92,8 +140,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "{"
+          "type": "SYMBOL",
+          "name": "symbol_lbrace"
         },
         {
           "type": "REPEAT",
@@ -103,8 +151,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "}"
+          "type": "SYMBOL",
+          "name": "symbol_rbrace"
         }
       ]
     },
@@ -112,16 +160,16 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "("
+          "type": "SYMBOL",
+          "name": "symbol_lparen"
         },
         {
           "type": "SYMBOL",
           "name": "expression"
         },
         {
-          "type": "STRING",
-          "value": ")"
+          "type": "SYMBOL",
+          "name": "symbol_rparen"
         }
       ]
     },
@@ -197,8 +245,8 @@
           "name": "type_constraint"
         },
         {
-          "type": "STRING",
-          "value": "malloc"
+          "type": "SYMBOL",
+          "name": "keyword_malloc"
         }
       ]
     },
@@ -210,8 +258,8 @@
           "name": "type_constraint"
         },
         {
-          "type": "STRING",
-          "value": "with"
+          "type": "SYMBOL",
+          "name": "keyword_with"
         },
         {
           "type": "SYMBOL",
@@ -355,8 +403,8 @@
         "type": "SEQ",
         "members": [
           {
-            "type": "STRING",
-            "value": "if"
+            "type": "SYMBOL",
+            "name": "keyword_if"
           },
           {
             "type": "SYMBOL",
@@ -369,8 +417,8 @@
                 "type": "SEQ",
                 "members": [
                   {
-                    "type": "STRING",
-                    "value": "else"
+                    "type": "SYMBOL",
+                    "name": "keyword_else"
                   },
                   {
                     "type": "SYMBOL",
@@ -465,8 +513,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "("
+          "type": "SYMBOL",
+          "name": "symbol_lparen"
         },
         {
           "type": "REPEAT",
@@ -476,8 +524,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "->"
+          "type": "SYMBOL",
+          "name": "symbol_arrow"
         },
         {
           "type": "REPEAT",
@@ -487,8 +535,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": ")"
+          "type": "SYMBOL",
+          "name": "symbol_rparen"
         }
       ]
     },
