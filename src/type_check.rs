@@ -1,4 +1,4 @@
-use crate::bytecode::{Block, ByteCode, Definition, OpCode};
+use crate::bytecode::{Block, ByteCode, OpCode};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {

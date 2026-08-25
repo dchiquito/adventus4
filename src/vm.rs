@@ -47,8 +47,8 @@ impl Iterator for VM<'_> {
             OpCode::Pop => Op::Pop,
             OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
             OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
-            OpCode::BindProp => Op::BindProp(PropId::new(self.next_word() as u64)),
-            OpCode::PushProp => Op::PushProp(PropId::new(self.next_word() as u64)),
+            OpCode::BindProp => Op::BindProp(PropId::new(self.next_word())),
+            OpCode::PushProp => Op::PushProp(PropId::new(self.next_word())),
             OpCode::Add => Op::Add,
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
@@ -63,8 +63,8 @@ impl Iterator for VM<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
-            OpCode::ObjectId => Op::ObjectId(ObjectId::new(self.next_word() as u64)),
-            OpCode::Malloc => Op::Malloc(ObjectId::new(self.next_word() as u64)),
+            OpCode::ObjectId => Op::ObjectId(ObjectId::new(self.next_word())),
+            OpCode::Malloc => Op::Malloc(ObjectId::new(self.next_word())),
         };
         Some(op)
     }
