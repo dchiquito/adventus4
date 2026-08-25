@@ -1,13 +1,13 @@
 
 def LinkList {value next}
 def new_list [
-  9999
+  -1
   (LinkList) malloc
 ]
 
 def ll_len [
   (LinkList) with [
-    @next 9999 == if [
+    @next -1 == if [
       1
     ] else [
       @next ll_len
@@ -18,7 +18,7 @@ def ll_len [
 def ll_append [
   >$value
   (LinkList) with [
-    @next 9999 == if [
+    @next -1 == if [
       $value new_list >@next
     ] else [
       @next $value ll_append

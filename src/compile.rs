@@ -176,6 +176,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         eprintln!("{:?}##int", cursor.node().grammar_name());
         match cursor.node().grammar_id() {
             POSITIVE_INT => self.compile_positive_int(cursor),
+            NEGATIVE_INT => self.compile_negative_int(cursor),
             _ => unreachable!(
                 "{} ({})",
                 cursor.node().grammar_name(),
@@ -183,6 +184,18 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             ),
         }
         assert!(cursor.goto_parent());
+    }
+    fn compile_negative_int(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, NEGATIVE_INT, "negative_int");
+        let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()][1..];
+        eprintln!("-int {:?}", string_repr);
+        let int = -string_repr
+            .as_bytes()
+            .iter()
+            .filter(|&&b| b != b'_')
+            .map(|b| (b - b'0') as i64)
+            .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
+        self.push(Op::Literal(int));
     }
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
