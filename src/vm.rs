@@ -1,4 +1,4 @@
-use crate::bytecode::{ByteCode, ObjectId, Op, OpCode, PropId};
+use crate::bytecode::{BlockId, ByteCode, DefId, ObjectId, Op, OpCode, PropId};
 
 struct Object {
     obj_id: ObjectId,
@@ -6,14 +6,14 @@ struct Object {
 }
 
 struct StackFrame {
-    block_id: usize,
+    block_id: BlockId,
     pc: usize,
     locals: Vec<i64>,
 }
 
 pub struct VM<'a> {
     bytecode: &'a ByteCode,
-    block_id: usize,
+    block_id: BlockId,
     pc: usize,
     locals: Vec<i64>,
     stack: Vec<i64>,
@@ -23,7 +23,7 @@ pub struct VM<'a> {
 
 impl VM<'_> {
     fn next_word(&mut self) -> u64 {
-        let word = self.bytecode.blocks[self.block_id].data[self.pc];
+        let word = self.bytecode.get_block(self.block_id).data[self.pc];
         self.pc += 1;
         word
     }
@@ -32,16 +32,16 @@ impl Iterator for VM<'_> {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc >= self.bytecode.blocks[self.block_id].data.len() {
+        if self.pc >= self.bytecode.get_block(self.block_id).data.len() {
             return None;
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
             OpCode::Literal => Op::Literal(self.next_word() as i64),
-            OpCode::Call => Op::Call(self.next_word() as usize),
+            OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::Return => Op::Return,
-            OpCode::GoTo => Op::GoTo(self.next_word() as usize),
-            OpCode::GoToIf => Op::GoToIf(self.next_word() as usize),
+            OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
+            OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Pop => Op::Pop,
@@ -72,12 +72,12 @@ impl Iterator for VM<'_> {
 impl<'a> VM<'a> {
     pub fn new_main(bytecode: &'a ByteCode) -> Self {
         let def_id = bytecode.main_id.expect("no main definition");
-        let block_id = bytecode.defs[def_id].block_id;
+        let block_id = bytecode.get_def(def_id).block_id;
         Self::new(bytecode, def_id, block_id)
     }
-    pub fn new(bytecode: &'a ByteCode, def_id: usize, block_id: usize) -> Self {
+    pub fn new(bytecode: &'a ByteCode, def_id: DefId, block_id: BlockId) -> Self {
         let pc = 0;
-        let locals = bytecode.defs[def_id].initialize_locals();
+        let locals = bytecode.get_def(def_id).initialize_locals();
         let stack = vec![];
         let call_stack = vec![];
         let allocations = vec![];
@@ -134,8 +134,8 @@ impl VM<'_> {
     fn op_literal(&mut self, literal: i64) {
         self.stack.push(literal);
     }
-    fn op_call(&mut self, def_id: usize) {
-        let mut locals = self.bytecode.defs[def_id].initialize_locals();
+    fn op_call(&mut self, def_id: DefId) {
+        let mut locals = self.bytecode.get_def(def_id).initialize_locals();
         std::mem::swap(&mut self.locals, &mut locals);
         let frame = StackFrame {
             block_id: self.block_id,
@@ -143,7 +143,7 @@ impl VM<'_> {
             locals,
         };
         self.call_stack.push(frame);
-        self.block_id = self.bytecode.defs[def_id].block_id;
+        self.block_id = self.bytecode.get_def(def_id).block_id;
         self.pc = 0;
     }
     fn op_return(&mut self) {
@@ -160,11 +160,11 @@ impl VM<'_> {
             panic!("Done");
         }
     }
-    fn op_go_to(&mut self, block_id: usize) {
+    fn op_go_to(&mut self, block_id: BlockId) {
         self.block_id = block_id;
         self.pc = 0;
     }
-    fn op_go_to_if(&mut self, block_id: usize) {
+    fn op_go_to_if(&mut self, block_id: BlockId) {
         let value = self.stack.pop().unwrap();
         if value == 1 {
             self.block_id = block_id;

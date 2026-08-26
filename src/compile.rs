@@ -7,7 +7,7 @@ use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
-    bytecode::{ByteCode, ObjectId, Op, PropId},
+    bytecode::{BlockId, ByteCode, DefId, ObjectId, Op, PropId},
     vm::VM,
 };
 
@@ -42,7 +42,7 @@ enum Builtin {
 pub struct Compiler<'s> {
     source: &'s str,
     bytecode: ByteCode,
-    def_map: HashMap<String, usize>,
+    def_map: HashMap<String, DefId>,
     prop_ids: HashMap<String, PropId>,
 }
 impl<'s> Compiler<'s> {
@@ -115,11 +115,11 @@ impl<'s> Compiler<'s> {
 
 struct DefCompiler<'a, 's> {
     compiler: &'a mut Compiler<'s>,
-    def_id: usize,
+    def_id: DefId,
     local_map: HashMap<String, usize>,
 }
 impl<'a, 's> DefCompiler<'a, 's> {
-    fn new(compiler: &'a mut Compiler<'s>, def_id: usize) -> Self {
+    fn new(compiler: &'a mut Compiler<'s>, def_id: DefId) -> Self {
         let local_map = HashMap::default();
         Self {
             compiler,
@@ -127,7 +127,7 @@ impl<'a, 's> DefCompiler<'a, 's> {
             local_map,
         }
     }
-    fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: usize) {
+    fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: BlockId) {
         if cursor.node().grammar_id() != EXPRESSION {
             // TODO ingest the signature
             assert!(cursor.goto_next_sibling()); // :
@@ -140,17 +140,17 @@ impl<'a, 's> DefCompiler<'a, 's> {
 }
 struct BlockCompiler<'d, 'c, 's> {
     def_compiler: &'d mut DefCompiler<'c, 's>,
-    block_id: usize,
+    block_id: BlockId,
 }
 impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
-    fn new(def_compiler: &'d mut DefCompiler<'c, 's>, block_id: usize) -> Self {
+    fn new(def_compiler: &'d mut DefCompiler<'c, 's>, block_id: BlockId) -> Self {
         Self {
             def_compiler,
             block_id,
         }
     }
     fn push(&mut self, op: Op) {
-        self.def_compiler.compiler.bytecode.blocks[self.block_id].push(op);
+        self.def_compiler.compiler.bytecode.get_block_mut(self.block_id).push(op);
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
@@ -203,7 +203,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             };
             self.push(op);
         } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
-            eprintln!("Looked up {def_id}");
+            eprintln!("Looked up {def_id:?}");
             self.push(Op::Call(def_id));
         } else {
             panic!("{string_repr} is undefined");
@@ -319,11 +319,11 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             *id
         } else {
             let id =
-                self.def_compiler.compiler.bytecode.defs[self.def_compiler.def_id].get_local_size();
+                self.def_compiler.compiler.bytecode.get_def_mut(self.def_compiler.def_id).get_local_size();
             self.def_compiler
                 .local_map
                 .insert(local_name.to_string(), id);
-            self.def_compiler.compiler.bytecode.defs[self.def_compiler.def_id].incr_local_size();
+            self.def_compiler.compiler.bytecode.get_def_mut(self.def_compiler.def_id).incr_local_size();
             id
         };
         self.push(Op::BindLocal(local_id));
@@ -406,11 +406,12 @@ impl BlockCompiler<'_, '_, '_> {
         let mut block_compiler = BlockCompiler::new(self.def_compiler, block_id);
         block_compiler.compile_expression(cursor);
         eprintln!("bytecode {:?}", self.def_compiler.compiler.bytecode);
-        eprintln!("block_id {block_id}");
+        eprintln!("block_id {block_id:?}");
 
         // TODO type check before running the VM
 
-        let mut vm = VM::new(&self.def_compiler.compiler.bytecode, 0, block_id);
+        let def_id = DefId::new(0); // TODO this is wrong
+        let mut vm = VM::new(&self.def_compiler.compiler.bytecode, def_id, block_id);
         vm.run();
         let obj_id = vm.pop_from_stack() as u64;
         assert_eq!(vm.stack_len(), 0);

@@ -105,13 +105,29 @@ impl ObjectId {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct BlockId(u64);
+impl BlockId {
+    pub fn new(block_id: u64) -> Self {
+        Self(block_id)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct DefId(u64);
+impl DefId {
+    pub fn new(def_id: u64) -> Self {
+        Self(def_id)
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
     Literal(i64),
-    Call(usize),
+    Call(DefId),
     Return,
-    GoTo(usize),
-    GoToIf(usize),
+    GoTo(BlockId),
+    GoToIf(BlockId),
     Dup,
     Swap,
     Pop,
@@ -180,9 +196,9 @@ impl Block {
         self.data.push(u64::from(OpCode::from(op)));
         if let Some(word) = match op {
             Op::Literal(literal) => Some(literal as u64),
-            Op::Call(def_id) => Some(def_id as u64),
-            Op::GoTo(block_id) => Some(block_id as u64),
-            Op::GoToIf(block_id) => Some(block_id as u64),
+            Op::Call(def_id) => Some(def_id.0),
+            Op::GoTo(block_id) => Some(block_id.0),
+            Op::GoToIf(block_id) => Some(block_id.0),
             Op::BindLocal(local_id) => Some(local_id as u64),
             Op::PushLocal(local_id) => Some(local_id as u64),
             Op::BindProp(prop_id) => Some(prop_id.0),
@@ -224,10 +240,10 @@ impl Iterator for BlockIterator<'_> {
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
             OpCode::Literal => Op::Literal(self.next_word() as i64),
-            OpCode::Call => Op::Call(self.next_word() as usize),
+            OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::Return => Op::Return,
-            OpCode::GoTo => Op::GoTo(self.next_word() as usize),
-            OpCode::GoToIf => Op::GoToIf(self.next_word() as usize),
+            OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
+            OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Pop => Op::Pop,
@@ -256,13 +272,13 @@ impl Iterator for BlockIterator<'_> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Definition {
-    pub block_id: usize,
+    pub block_id: BlockId,
     local_size: usize,
 }
 impl Definition {
-    pub fn new(block_id: usize) -> Self {
+    pub fn new(block_id: BlockId) -> Self {
         let local_size = 0;
         Self {
             block_id,
@@ -284,20 +300,32 @@ impl Definition {
 pub struct ByteCode {
     pub blocks: Vec<Block>,
     pub defs: Vec<Definition>,
-    pub main_id: Option<usize>,
+    pub main_id: Option<DefId>,
     pub object_ids: HashMap<ObjectId, Vec<PropId>>,
 }
 
 impl ByteCode {
-    pub fn new_block(&mut self) -> usize {
-        let block_id = self.blocks.len();
+    pub fn new_block(&mut self) -> BlockId {
+        let block_id = BlockId::new(self.blocks.len() as u64);
         self.blocks.push(Block::default());
         block_id
     }
-    pub fn new_def(&mut self, block_id: usize) -> usize {
-        let def_id = self.defs.len();
+    pub fn get_block(&self, block_id: BlockId) -> &Block {
+        &self.blocks[block_id.0 as usize]
+    }
+    pub fn get_block_mut(&mut self, block_id: BlockId) -> &mut Block {
+        &mut self.blocks[block_id.0 as usize]
+    }
+    pub fn new_def(&mut self, block_id: BlockId) -> DefId {
+        let def_id = DefId::new(self.defs.len() as u64);
         self.defs.push(Definition::new(block_id));
         def_id
+    }
+    pub fn get_def(&self, def_id: DefId) -> &Definition {
+        &self.defs[def_id.0 as usize]
+    }
+    pub fn get_def_mut(&mut self, def_id: DefId) -> &mut Definition {
+        &mut self.defs[def_id.0 as usize]
     }
     pub fn pretty_print(&self) {
         for (i, block) in self.blocks.iter().enumerate() {
@@ -305,11 +333,11 @@ impl ByteCode {
             block.pretty_print();
         }
         for (i, def) in self.defs.iter().enumerate() {
-            if Some(i) == self.main_id {
+            if Some(DefId::new(i as u64)) == self.main_id {
                 println!("main:");
             }
             println!(
-                "Definition {i} -> block {} ({} locals)",
+                "Definition {i} -> block {:?} ({} locals)",
                 def.block_id, def.local_size
             );
         }
