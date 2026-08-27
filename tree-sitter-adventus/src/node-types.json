@@ -55,6 +55,37 @@
     }
   },
   {
+    "type": "builtin_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "builtin_type_bool",
+          "named": true
+        },
+        {
+          "type": "builtin_type_char",
+          "named": true
+        },
+        {
+          "type": "builtin_type_int",
+          "named": true
+        },
+        {
+          "type": "builtin_type_none",
+          "named": true
+        },
+        {
+          "type": "builtin_type_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "def",
     "named": true,
     "fields": {},
@@ -379,7 +410,21 @@
   {
     "type": "type",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "builtin_type",
+          "named": true
+        },
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "type_constraint",
@@ -429,15 +474,27 @@
     "named": false
   },
   {
-    "type": "Char",
-    "named": false
-  },
-  {
-    "type": "Int",
-    "named": false
-  },
-  {
     "type": "add",
+    "named": true
+  },
+  {
+    "type": "builtin_type_bool",
+    "named": true
+  },
+  {
+    "type": "builtin_type_char",
+    "named": true
+  },
+  {
+    "type": "builtin_type_int",
+    "named": true
+  },
+  {
+    "type": "builtin_type_none",
+    "named": true
+  },
+  {
+    "type": "builtin_type_type",
     "named": true
   },
   {

@@ -123,9 +123,21 @@ export default grammar({
       $.symbol_rparen,
     ),
 
+    builtin_type_type: $ => "Type",
+    builtin_type_int: $ => "Int",
+    builtin_type_char: $ => "Char",
+    builtin_type_bool: $ => "Bool",
+    builtin_type_none: $ => "None",
+    builtin_type: $ => choice(
+      $.builtin_type_type,
+      $.builtin_type_int,
+      $.builtin_type_char,
+      $.builtin_type_bool,
+      $.builtin_type_none,
+    ),
     type: $ => choice(
-      "Int",
-      "Char",
+      $.builtin_type,
+      $.expression,
     ),
   },
   extras: $ => [

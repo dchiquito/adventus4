@@ -4,9 +4,11 @@ use crate::bytecode::{Block, ByteCode, DefId, ObjectId, Op};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
-    Bool,
+    Type,
     Int,
     Char,
+    Bool,
+    None,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,10 +20,15 @@ pub enum Type {
     Unknown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct StackMutation {
     before: Vec<Type>,
     after: Vec<Type>,
+}
+impl StackMutation {
+    pub fn new(before: Vec<Type>, after: Vec<Type>) -> Self {
+        Self { before, after }
+    }
 }
 macro_rules! stack_mutation {
     ($b_field:ident($b_id:ident) => $a_field:ident($a_id:ident)) => {
@@ -67,6 +74,18 @@ impl StackMutation {
                 after: rhs.after.clone(),
             }
         }
+    }
+}
+impl std::fmt::Debug for StackMutation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for b in self.before.iter() {
+            write!(f, "{b:?} ")?;
+        }
+        write!(f, "-> ")?;
+        for a in self.after.iter() {
+            write!(f, "{a:?} ")?;
+        }
+        Ok(())
     }
 }
 

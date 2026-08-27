@@ -1,4 +1,4 @@
-def fibo [
+def fibo: (Int->Int) [
   1 -
   dup 2 <= if [
     pop

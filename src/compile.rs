@@ -8,6 +8,7 @@ use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
     bytecode::{BlockId, ByteCode, DefId, ObjectId, Op, PropId},
+    type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
 };
 
@@ -57,6 +58,15 @@ impl<'s> Compiler<'s> {
             prop_ids,
         }
     }
+    fn prop_id_for(&mut self, prop_name: &str) -> PropId {
+        if let Some(prop_id) = self.prop_ids.get(prop_name) {
+            *prop_id
+        } else {
+            let prop_id = PropId::new(self.prop_ids.len() as u64);
+            self.prop_ids.insert(prop_name.to_string(), prop_id);
+            prop_id
+        }
+    }
 
     fn parse_tree(&self) -> Tree {
         let mut parser = Parser::new();
@@ -86,6 +96,7 @@ impl<'s> Compiler<'s> {
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling());
         let name = &self.source[cursor.node().byte_range()];
+        assert!(cursor.goto_next_sibling());
 
         let block_id = self.bytecode.new_block();
         let def_id = self.bytecode.new_def(block_id);
@@ -96,20 +107,65 @@ impl<'s> Compiler<'s> {
             self.bytecode.main_id = Some(def_id);
         }
 
+        // Handle the type signature, if present
+        if cursor.node().grammar_id() != EXPRESSION {
+            assert_node_id!(cursor, MANUAL_SIGNATURE, "manual_signature");
+            assert!(cursor.goto_first_child());
+            assert!(cursor.goto_next_sibling()); // :
+            let signature = self.compile_signature(cursor);
+            eprintln!("  {signature:?}");
+            self.bytecode.get_def_mut(def_id).declared_type = Some(signature);
+            assert!(cursor.goto_parent());
+            assert!(cursor.goto_next_sibling());
+        }
+
         {
             let mut def_compiler = DefCompiler::new(self, def_id);
-            assert!(cursor.goto_next_sibling());
             def_compiler.compile_def(cursor, block_id);
         }
     }
-    fn prop_id_for(&mut self, prop_name: &str) -> PropId {
-        if let Some(prop_id) = self.prop_ids.get(prop_name) {
-            *prop_id
-        } else {
-            let prop_id = PropId::new(self.prop_ids.len() as u64);
-            self.prop_ids.insert(prop_name.to_string(), prop_id);
-            prop_id
+    fn compile_signature(&self, cursor: &mut TreeCursor) -> StackMutation {
+        assert_node_id!(cursor, SIGNATURE, "signature");
+        assert!(cursor.goto_first_child());
+        assert!(cursor.goto_next_sibling()); // (
+        let mut before = vec![];
+        while cursor.node().grammar_id() != SYMBOL_ARROW {
+            before.push(self.compile_type(cursor));
+            cursor.goto_next_sibling();
         }
+        cursor.goto_next_sibling(); // ->
+        let mut after = vec![];
+        while cursor.node().grammar_id() != SYMBOL_RPAREN {
+            after.push(self.compile_type(cursor));
+            cursor.goto_next_sibling();
+        }
+        assert!(cursor.goto_parent());
+        StackMutation::new(before, after)
+    }
+    fn compile_type(&self, cursor: &mut TreeCursor) -> Type {
+        assert_node_id!(cursor, TYPE, "type");
+        assert!(cursor.goto_first_child());
+        let t = match cursor.node().grammar_id() {
+            BUILTIN_TYPE => Type::Builtin(self.compile_builtin_type(cursor)),
+            EXPRESSION => todo!(),
+            _ => unreachable!(),
+        };
+        assert!(cursor.goto_parent());
+        t
+    }
+    fn compile_builtin_type(&self, cursor: &mut TreeCursor) -> BuiltinType {
+        assert_node_id!(cursor, BUILTIN_TYPE, "builtin_type");
+        assert!(cursor.goto_first_child());
+        let t = match cursor.node().grammar_id() {
+            BUILTIN_TYPE_TYPE => BuiltinType::Type,
+            BUILTIN_TYPE_INT => BuiltinType::Int,
+            BUILTIN_TYPE_CHAR => BuiltinType::Char,
+            BUILTIN_TYPE_BOOL => BuiltinType::Bool,
+            BUILTIN_TYPE_NONE => BuiltinType::None,
+            _ => unreachable!(),
+        };
+        assert!(cursor.goto_parent());
+        t
     }
 }
 
@@ -128,10 +184,6 @@ impl<'a, 's> DefCompiler<'a, 's> {
         }
     }
     fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: BlockId) {
-        if cursor.node().grammar_id() != EXPRESSION {
-            // TODO ingest the signature
-            assert!(cursor.goto_next_sibling()); // :
-        }
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
         block_compiler.push(Op::Return);
@@ -150,7 +202,11 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
     }
     fn push(&mut self, op: Op) {
-        self.def_compiler.compiler.bytecode.get_block_mut(self.block_id).push(op);
+        self.def_compiler
+            .compiler
+            .bytecode
+            .get_block_mut(self.block_id)
+            .push(op);
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
@@ -175,7 +231,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
         assert!(cursor.goto_parent());
     }
-    fn lookup_builtin(&self, name: &str) -> Option<Builtin>{
+    fn lookup_builtin(&self, name: &str) -> Option<Builtin> {
         match name {
             "dup" => Some(Builtin::Dup),
             "swap" => Some(Builtin::Swap),
@@ -184,7 +240,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             "or" => Some(Builtin::Or),
             "not" => Some(Builtin::Not),
             "print" => Some(Builtin::Print),
-            _ => None
+            _ => None,
         }
     }
     fn compile_identifier(&mut self, cursor: &mut TreeCursor) {
@@ -318,12 +374,20 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let local_id = if let Some(id) = self.def_compiler.local_map.get(local_name) {
             *id
         } else {
-            let id =
-                self.def_compiler.compiler.bytecode.get_def_mut(self.def_compiler.def_id).get_local_size();
+            let id = self
+                .def_compiler
+                .compiler
+                .bytecode
+                .get_def_mut(self.def_compiler.def_id)
+                .get_local_size();
             self.def_compiler
                 .local_map
                 .insert(local_name.to_string(), id);
-            self.def_compiler.compiler.bytecode.get_def_mut(self.def_compiler.def_id).incr_local_size();
+            self.def_compiler
+                .compiler
+                .bytecode
+                .get_def_mut(self.def_compiler.def_id)
+                .incr_local_size();
             id
         };
         self.push(Op::BindLocal(local_id));

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::type_check::StackMutation;
+
 #[derive(Copy, Clone, Debug)]
 pub enum OpCode {
     Literal,
@@ -276,13 +278,16 @@ impl Iterator for BlockIterator<'_> {
 pub struct Definition {
     pub block_id: BlockId,
     local_size: usize,
+    pub declared_type: Option<StackMutation>,
 }
 impl Definition {
     pub fn new(block_id: BlockId) -> Self {
         let local_size = 0;
+        let declared_type = None;
         Self {
             block_id,
             local_size,
+            declared_type,
         }
     }
     pub fn initialize_locals(&self) -> Vec<i64> {
@@ -339,10 +344,17 @@ impl ByteCode {
             if Some(DefId::new(i as u64)) == self.main_id {
                 println!("main:");
             }
-            println!(
-                "Definition {i} -> block {:?} ({} locals)",
-                def.block_id, def.local_size
-            );
+            if let Some(sig) = &def.declared_type {
+                println!(
+                    "Definition {i} :({sig:?}) has {:?} ({} locals)",
+                    def.block_id, def.local_size
+                );
+            } else {
+                println!(
+                    "Definition {i} has {:?} ({} locals)",
+                    def.block_id, def.local_size
+                );
+            }
         }
     }
 }

@@ -467,16 +467,61 @@
         }
       ]
     },
+    "builtin_type_type": {
+      "type": "STRING",
+      "value": "Type"
+    },
+    "builtin_type_int": {
+      "type": "STRING",
+      "value": "Int"
+    },
+    "builtin_type_char": {
+      "type": "STRING",
+      "value": "Char"
+    },
+    "builtin_type_bool": {
+      "type": "STRING",
+      "value": "Bool"
+    },
+    "builtin_type_none": {
+      "type": "STRING",
+      "value": "None"
+    },
+    "builtin_type": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "builtin_type_type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "builtin_type_int"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "builtin_type_char"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "builtin_type_bool"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "builtin_type_none"
+        }
+      ]
+    },
     "type": {
       "type": "CHOICE",
       "members": [
         {
-          "type": "STRING",
-          "value": "Int"
+          "type": "SYMBOL",
+          "name": "builtin_type"
         },
         {
-          "type": "STRING",
-          "value": "Char"
+          "type": "SYMBOL",
+          "name": "expression"
         }
       ]
     }
