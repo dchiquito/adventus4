@@ -327,6 +327,9 @@ impl ByteCode {
     pub fn get_def_mut(&mut self, def_id: DefId) -> &mut Definition {
         &mut self.defs[def_id.0 as usize]
     }
+    pub fn iter_def_ids(&self) -> impl Iterator<Item = DefId> {
+        (0..self.defs.len()).map(|i| DefId::new(i as u64))
+    }
     pub fn pretty_print(&self) {
         for (i, block) in self.blocks.iter().enumerate() {
             println!("Block {i}",);

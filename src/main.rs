@@ -6,8 +6,9 @@ fn main() {
         let bytecode = Compiler::new(&source_code).compile();
         eprintln!("{bytecode:?}");
         bytecode.pretty_print();
-        // let types = Types::infer(&bytecode);
-        // eprintln!("{types:?}");
+        let mut types = Types::new(&bytecode);
+        types.infer();
+        eprintln!("{types:?}");
         let mut vm = VM::new_main(&bytecode);
         vm.run();
     }

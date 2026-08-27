@@ -1,0 +1,12 @@
+def fibo [
+  1 -
+  dup 2 <= if [
+    pop
+    1
+  ] else [
+    dup fibo swap
+    1 - fibo
+    + 
+  ]
+]
+

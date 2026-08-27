@@ -17,11 +17,13 @@ def ll_len [
 ]
 def ll_append [
   >$value
-  >$node
-  $node.next -1 == if [
-    $value new_list $node>.next
+  dup.next -1 == if [
+    dup
+    $value new_list
+    swap >.next
   ] else [
-    $node.next $value ll_append
+    dup.next $value ll_append
+    pop
   ]
 ]
 
@@ -29,8 +31,8 @@ def ll_append [
 
 def main [
   11 new_list
-  dup 22 ll_append
-  dup 33 ll_append
+  22 ll_append
+  33 ll_append
   ll_len
   print
 ]
