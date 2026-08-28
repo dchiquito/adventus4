@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::bytecode::{Block, ByteCode, DefId, ObjectId, Op};
+use crate::bytecode::{Block, BlockId, ByteCode, DefId, Definition, ObjectId, Op};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
@@ -15,8 +15,6 @@ pub enum BuiltinType {
 pub enum Type {
     Builtin(BuiltinType),
     ObjectId(ObjectId),
-    DefBefore(DefId),
-    DefAfter(DefId),
     Unknown,
 }
 
@@ -54,7 +52,6 @@ impl StackMutation {
     // TODO make this mutate
     fn chain(&self, rhs: &StackMutation) -> StackMutation {
         for (lhs, rhs) in self.after.iter().rev().zip(rhs.before.iter().rev()) {
-            eprintln!("Chaining {self:?} -> {rhs:?}");
             assert_eq!(lhs, rhs);
         }
         if self.after.len() >= rhs.before.len() {
@@ -75,6 +72,17 @@ impl StackMutation {
             }
         }
     }
+    fn reconcile(&self, other: &StackMutation) -> StackMutation {
+        if self.after != other.after {
+            panic!("two different types: {self:?} and {other:?}")
+        } else if self.before != other.before {
+            todo!(
+                "This is technically allowed, previous needs to be extended after checking that the subset matches"
+            )
+        } else {
+            self.clone()
+        }
+    }
 }
 impl std::fmt::Debug for StackMutation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -92,20 +100,27 @@ impl std::fmt::Debug for StackMutation {
 #[derive(Debug)]
 pub struct Types<'b> {
     bytecode: &'b ByteCode,
-    block_types: Vec<StackMutation>,
+    def_types: HashMap<DefId, StackMutation>,
 }
 impl<'b> Types<'b> {
     pub fn new(bytecode: &'b ByteCode) -> Self {
+        let def_types = Default::default();
         Self {
             bytecode,
-            block_types: vec![],
+            def_types,
         }
     }
     pub fn infer(&mut self) {
-        self.generate_def_dependency_graph();
-        for block in self.bytecode.blocks.iter() {
-            let block_type = self.infer_block(block);
-            self.block_types.push(block_type);
+        {
+            let graph = self.generate_def_dependency_graph();
+            self.check_for_def_dependency_loops(graph);
+        }
+        // At this point, we can be sure that any def dependency loops can be broken by using
+        // the declared type of the def.
+        for def_id in self.bytecode.iter_def_ids() {
+            let def = self.bytecode.get_def(def_id);
+            let t = self.infer_def(def);
+            eprintln!("{def_id:?} has type {t:?}!!!\n");
         }
     }
     fn generate_def_dependency_graph(&mut self) -> HashMap<DefId, Vec<DefId>> {
@@ -116,22 +131,26 @@ impl<'b> Types<'b> {
             blocks_to_check.clear();
             blocks_to_check.push(def.block_id);
             let mut dependencies = vec![];
-            while let Some(block_id) = blocks_to_check.pop() {
-                let block = self.bytecode.get_block(block_id);
-                for op in block.iter() {
-                    match op {
-                        Op::Call(called_def_id) => {
-                            if dependencies
-                                .iter()
-                                .find(|&&id| id == called_def_id)
-                                .is_none()
-                            {
-                                dependencies.push(called_def_id);
+            // If there is a declared type, we do not need to rely on dependencies to
+            // compute the type of the def.
+            if def.declared_type.is_none() {
+                while let Some(block_id) = blocks_to_check.pop() {
+                    let block = self.bytecode.get_block(block_id);
+                    for op in block.iter() {
+                        match op {
+                            Op::Call(called_def_id) => {
+                                if dependencies
+                                    .iter()
+                                    .find(|&&id| id == called_def_id)
+                                    .is_none()
+                                {
+                                    dependencies.push(called_def_id);
+                                }
                             }
+                            Op::GoTo(next_block_id) => blocks_to_check.push(next_block_id),
+                            Op::GoToIf(next_block_id) => blocks_to_check.push(next_block_id),
+                            _ => {}
                         }
-                        Op::GoTo(next_block_id) => blocks_to_check.push(next_block_id),
-                        Op::GoToIf(next_block_id) => blocks_to_check.push(next_block_id),
-                        _ => {}
                     }
                 }
             }
@@ -140,21 +159,121 @@ impl<'b> Types<'b> {
         }
         graph
     }
-    fn infer_block(&self, block: &Block) -> StackMutation {
-        let mut def_type = stack_mutation!(=>);
+    fn check_for_def_dependency_loops(&self, graph: HashMap<DefId, Vec<DefId>>) {
+        fn check_def(
+            graph: &HashMap<DefId, Vec<DefId>>,
+            stack: &mut Vec<DefId>,
+            checked: &mut HashSet<DefId>,
+            def_id: DefId,
+        ) {
+            if checked.contains(&def_id) {
+                return;
+            }
+            if stack.contains(&def_id) {
+                panic!("cycle detected: {stack:?}")
+            }
+            stack.push(def_id);
+            let deps = graph.get(&def_id).unwrap();
+            for dep in deps {
+                check_def(graph, stack, checked, *dep);
+            }
+            stack.pop();
+            checked.insert(def_id);
+        }
+        let mut stack = vec![];
+        let mut checked = HashSet::new();
+        for (root_def_id, _) in graph.iter() {
+            check_def(&graph, &mut stack, &mut checked, *root_def_id);
+        }
+    }
+    fn type_of_def(&mut self, def_id: DefId) -> &StackMutation {
+        // First, check the precomputed cache
+        if self.def_types.contains_key(&def_id) {
+            self.def_types.get(&def_id).unwrap()
+        } else {
+            // Second, check if a type was declared.
+            let t = self
+                .bytecode
+                .get_def(def_id)
+                .declared_type
+                .clone()
+                // Third, compute the type
+                .unwrap_or_else(|| self.infer_def(self.bytecode.get_def(def_id)));
+            // Save the declared or computed type for next time.
+            self.def_types.insert(def_id, t);
+            self.def_types.get(&def_id).unwrap()
+        }
+    }
+    fn infer_def(&mut self, def: &Definition) -> StackMutation {
+        DefInferer::new(self).infer_def(def)
+    }
+}
+
+struct DefInferer<'a, 'b> {
+    types: &'a mut Types<'b>,
+    blocks: HashMap<BlockId, StackMutation>,
+    current_type: StackMutation,
+    inferred_type: Option<StackMutation>,
+}
+impl<'a, 'b> DefInferer<'a, 'b> {
+    fn new(types: &'a mut Types<'b>) -> Self {
+        let blocks = Default::default();
+        let inferred_type = None;
+        let current_type = stack_mutation!(=>);
+        Self {
+            types,
+            blocks,
+            current_type,
+            inferred_type,
+        }
+    }
+    fn infer_def(mut self, def: &Definition) -> StackMutation {
+        eprintln!("Inferring def {def:?}");
+        self.walk_block(def.block_id);
+        self.inferred_type.expect("no return statements")
+    }
+    fn walk_block(&mut self, block_id: BlockId) {
+        eprintln!("Walking {block_id:?}: {:?}", self.current_type);
+        self.blocks.insert(block_id, self.current_type.clone());
+        let block = self.types.bytecode.get_block(block_id);
         for op in block.iter() {
             let sm = self.infer_op(op);
-            def_type = def_type.chain(&sm);
+            self.current_type = self.current_type.chain(&sm);
+            match op {
+                Op::Return => {
+                    if let Some(existing) = &self.inferred_type {
+                        self.inferred_type = Some(self.current_type.reconcile(existing));
+                    } else {
+                        self.inferred_type = Some(self.current_type.clone());
+                    }
+                    break;
+                }
+                Op::GoTo(block_id) => {
+                    if let Some(previous_type) = self.blocks.get(&block_id) {
+                        self.current_type = self.current_type.reconcile(previous_type);
+                    }
+                    self.walk_block(block_id);
+                    break;
+                }
+                Op::GoToIf(block_id) => {
+                    if let Some(previous_type) = self.blocks.get(&block_id) {
+                        self.current_type = self.current_type.reconcile(previous_type);
+                    }
+                    let saved_current_type = self.current_type.clone();
+                    self.walk_block(block_id);
+                    self.current_type = saved_current_type;
+                }
+                _ => {}
+            }
         }
-        def_type
     }
-    fn infer_op(&self, op: Op) -> StackMutation {
+    fn infer_op(&mut self, op: Op) -> StackMutation {
         match op {
             Op::Literal(_) => stack_mutation!(=>Int),
-            Op::Call(def_id) => stack_mutation!(DefBefore(def_id)=>DefAfter(def_id)),
+            Op::Call(def_id) => self.types.type_of_def(def_id).clone(),
             Op::Return => stack_mutation!(=>),
-            Op::GoTo(block_id) => self.infer_block(self.bytecode.get_block(block_id)),
-            Op::GoToIf(_block_id) => todo!(),
+            Op::GoTo(_) => stack_mutation!(=>),
+            Op::GoToIf(_) => stack_mutation!(Bool=>),
             Op::Dup => stack_mutation!(Int=>Int Int),
             Op::Swap => stack_mutation!(Int Int=>Int Int),
             Op::Pop => stack_mutation!(Int=>),
@@ -179,7 +298,7 @@ impl<'b> Types<'b> {
             Op::ObjectId(obj_id) => stack_mutation!(=>ObjectId(obj_id)),
             Op::Malloc(obj_id) => {
                 let mut sm = stack_mutation!(=>ObjectId(obj_id));
-                let props = self.bytecode.object_ids.get(&obj_id).unwrap();
+                let props = self.types.bytecode.object_ids.get(&obj_id).unwrap();
                 for prop_id in props.iter() {
                     // TODO get type of props
                     sm.before.push(Type::Builtin(BuiltinType::Int));

@@ -1,6 +1,6 @@
 def fibo: (Int->Int) [
   1 -
-  dup 2 <= if [
+  dup 0 <= if [
     pop
     1
   ] else [
@@ -10,3 +10,7 @@ def fibo: (Int->Int) [
   ]
 ]
 
+def main [
+  2 fibo
+  print
+]
