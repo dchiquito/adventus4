@@ -32,8 +32,8 @@ export default grammar({
       $.expression,
     ),
 
-    positive_int: $ => /[1-9][0-9_]*/,
-    negative_int: $ => /-[1-9][0-9_]*/,
+    positive_int: $ => /[0-9_]+/,
+    negative_int: $ => /-[0-9_]+/,
     int: $ => choice(
       $.positive_int,
       $.negative_int,

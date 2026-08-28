@@ -93,11 +93,11 @@
     },
     "positive_int": {
       "type": "PATTERN",
-      "value": "[1-9][0-9_]*"
+      "value": "[0-9_]+"
     },
     "negative_int": {
       "type": "PATTERN",
-      "value": "-[1-9][0-9_]*"
+      "value": "-[0-9_]+"
     },
     "int": {
       "type": "CHOICE",
