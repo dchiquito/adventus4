@@ -94,8 +94,8 @@ impl PropId {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ObjectId(u64);
-impl ObjectId {
+pub struct LayoutId(u64);
+impl LayoutId {
     pub fn new(prop_id: u64) -> Self {
         Self(prop_id)
     }
@@ -151,8 +151,8 @@ pub enum Op {
     Or,
     Not,
     Print,
-    ObjectId(ObjectId),
-    Malloc(ObjectId),
+    Layout(LayoutId),
+    Malloc(LayoutId),
 }
 impl From<Op> for OpCode {
     fn from(op: Op) -> Self {
@@ -183,7 +183,7 @@ impl From<Op> for OpCode {
             Op::Or => OpCode::Or,
             Op::Not => OpCode::Not,
             Op::Print => OpCode::Print,
-            Op::ObjectId(_) => OpCode::ObjectId,
+            Op::Layout(_) => OpCode::ObjectId,
             Op::Malloc(_) => OpCode::Malloc,
         }
     }
@@ -205,8 +205,8 @@ impl Block {
             Op::PushLocal(local_id) => Some(local_id as u64),
             Op::BindProp(prop_id) => Some(prop_id.0),
             Op::PushProp(prop_id) => Some(prop_id.0),
-            Op::ObjectId(obj_id) => Some(obj_id.0),
-            Op::Malloc(obj_id) => Some(obj_id.0),
+            Op::Layout(layout_id) => Some(layout_id.0),
+            Op::Malloc(layout_id) => Some(layout_id.0),
             _ => None,
         } {
             self.data.push(word)
@@ -267,8 +267,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
-            OpCode::ObjectId => Op::ObjectId(ObjectId::new(self.next_word())),
-            OpCode::Malloc => Op::Malloc(ObjectId::new(self.next_word())),
+            OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word())),
+            OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word())),
         };
         Some(op)
     }
@@ -306,7 +306,7 @@ pub struct ByteCode {
     pub blocks: Vec<Block>,
     pub defs: Vec<Definition>,
     pub main_id: Option<DefId>,
-    pub object_ids: HashMap<ObjectId, Vec<PropId>>,
+    pub layouts: HashMap<LayoutId, Vec<PropId>>,
 }
 
 impl ByteCode {

@@ -5,7 +5,7 @@ def new_list [
   (LinkList) malloc
 ]
 
-def ll_len [
+def ll_len :(LinkList -> Int) [
   .next
   dup -1 == if [
     pop
@@ -15,7 +15,7 @@ def ll_len [
     1 +
   ]
 ]
-def ll_append [
+def ll_append :(LinkList Int -> LinkList) [
   >$value
   dup.next -1 == if [
     dup

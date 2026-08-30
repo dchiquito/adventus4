@@ -7,7 +7,7 @@ use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
-    bytecode::{BlockId, ByteCode, DefId, ObjectId, Op, PropId},
+    bytecode::{BlockId, ByteCode, DefId, LayoutId, Op, PropId},
     type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
 };
@@ -28,6 +28,16 @@ macro_rules! assert_node_id {
             debug_assert_eq!($cursor.node().grammar_name(), $name);
         }
     };
+}
+
+fn evaluate_at_compile_time(bytecode: &ByteCode, block_id: BlockId) -> u64 {
+    // TODO type check before running the VM
+    let def_id = DefId::new(0); // TODO this is wrong
+    let mut vm = VM::new(bytecode, def_id, block_id);
+    vm.run();
+    let obj_id = vm.pop_from_stack() as u64;
+    assert_eq!(vm.stack_len(), 0);
+    obj_id
 }
 
 enum Builtin {
@@ -124,7 +134,7 @@ impl<'s> Compiler<'s> {
             def_compiler.compile_def(cursor, block_id);
         }
     }
-    fn compile_signature(&self, cursor: &mut TreeCursor) -> StackMutation {
+    fn compile_signature(&mut self, cursor: &mut TreeCursor) -> StackMutation {
         assert_node_id!(cursor, SIGNATURE, "signature");
         assert!(cursor.goto_first_child());
         assert!(cursor.goto_next_sibling()); // (
@@ -142,12 +152,24 @@ impl<'s> Compiler<'s> {
         assert!(cursor.goto_parent());
         StackMutation::new(before, after)
     }
-    fn compile_type(&self, cursor: &mut TreeCursor) -> Type {
+    fn compile_type(&mut self, cursor: &mut TreeCursor) -> Type {
         assert_node_id!(cursor, TYPE, "type");
         assert!(cursor.goto_first_child());
         let t = match cursor.node().grammar_id() {
             BUILTIN_TYPE => Type::Builtin(self.compile_builtin_type(cursor)),
-            EXPRESSION => todo!(),
+            EXPRESSION => {
+                let block_id = self.bytecode.new_block();
+                let dummy_def_id = DefId::new(0);
+                let mut def_compiler = DefCompiler::new(self, dummy_def_id);
+                let mut block_compiler = BlockCompiler::new(&mut def_compiler, block_id);
+                block_compiler.compile_expression(cursor);
+                eprintln!("bytecode {:?}", self.bytecode);
+                eprintln!("block_id {block_id:?}");
+
+                let raw_layout_id = evaluate_at_compile_time(&self.bytecode, block_id);
+                let layout_id = LayoutId::new(raw_layout_id);
+                Type::Object(layout_id)
+            }
             _ => unreachable!(),
         };
         assert!(cursor.goto_parent());
@@ -328,18 +350,18 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             assert!(cursor.goto_next_sibling());
         }
         // TODO assume no collisions ¯\_(ツ)_/¯
-        let obj_id = {
+        let layout_id = {
             let mut hasher = DefaultHasher::new();
             props[..].hash(&mut hasher);
             hasher.finish()
         };
-        let obj_id = ObjectId::new(obj_id);
+        let layout_id = LayoutId::new(layout_id);
         self.def_compiler
             .compiler
             .bytecode
-            .object_ids
-            .insert(obj_id, props);
-        self.push(Op::ObjectId(obj_id));
+            .layouts
+            .insert(layout_id, props);
+        self.push(Op::Layout(layout_id));
         assert!(cursor.goto_parent());
     }
     fn compile_builtin(&mut self, cursor: &mut TreeCursor) {
@@ -455,9 +477,9 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_malloc(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, MALLOC, "malloc");
         assert!(cursor.goto_first_child());
-        let obj_id = self.resolve_type_constraint(cursor);
-        let obj_id = ObjectId::new(obj_id);
-        self.push(Op::Malloc(obj_id));
+        let layout_id = self.resolve_type_constraint(cursor);
+        let layout_id = LayoutId::new(layout_id);
+        self.push(Op::Malloc(layout_id));
         assert!(cursor.goto_parent());
     }
 }
@@ -472,16 +494,10 @@ impl BlockCompiler<'_, '_, '_> {
         eprintln!("bytecode {:?}", self.def_compiler.compiler.bytecode);
         eprintln!("block_id {block_id:?}");
 
-        // TODO type check before running the VM
-
-        let def_id = DefId::new(0); // TODO this is wrong
-        let mut vm = VM::new(&self.def_compiler.compiler.bytecode, def_id, block_id);
-        vm.run();
-        let obj_id = vm.pop_from_stack() as u64;
-        assert_eq!(vm.stack_len(), 0);
-        eprintln!("obj id??? {obj_id}\n\n\n");
+        let layout_id = evaluate_at_compile_time(&self.def_compiler.compiler.bytecode, block_id);
+        eprintln!("layout id??? {layout_id}\n\n\n");
         assert!(cursor.goto_parent());
-        obj_id
+        layout_id
     }
 }
 

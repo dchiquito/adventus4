@@ -1,7 +1,7 @@
-use crate::bytecode::{BlockId, ByteCode, DefId, ObjectId, Op, OpCode, PropId};
+use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, Op, OpCode, PropId};
 
 struct Object {
-    obj_id: ObjectId,
+    layout_id: LayoutId,
     props: Vec<i64>,
 }
 
@@ -18,7 +18,7 @@ pub struct VM<'a> {
     locals: Vec<i64>,
     stack: Vec<i64>,
     call_stack: Vec<StackFrame>,
-    allocations: Vec<Object>,
+    objects: Vec<Object>,
 }
 
 impl VM<'_> {
@@ -63,8 +63,8 @@ impl Iterator for VM<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
-            OpCode::ObjectId => Op::ObjectId(ObjectId::new(self.next_word())),
-            OpCode::Malloc => Op::Malloc(ObjectId::new(self.next_word())),
+            OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word())),
+            OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word())),
         };
         Some(op)
     }
@@ -80,7 +80,7 @@ impl<'a> VM<'a> {
         let locals = bytecode.get_def(def_id).initialize_locals();
         let stack = vec![];
         let call_stack = vec![];
-        let allocations = vec![];
+        let objects = vec![];
         Self {
             bytecode,
             block_id,
@@ -88,7 +88,7 @@ impl<'a> VM<'a> {
             locals,
             stack,
             call_stack,
-            allocations,
+            objects,
         }
     }
     pub fn run(&mut self) {
@@ -125,8 +125,8 @@ impl<'a> VM<'a> {
             Op::Or => self.op_or(),
             Op::Not => self.op_not(),
             Op::Print => self.op_print(),
-            Op::ObjectId(obj_id) => self.op_object_id(obj_id),
-            Op::Malloc(obj_id) => self.op_malloc(obj_id),
+            Op::Layout(layout_id) => self.op_layout(layout_id),
+            Op::Malloc(layout_id) => self.op_malloc(layout_id),
         }
     }
 }
@@ -194,11 +194,11 @@ impl VM<'_> {
     }
     fn op_bind_prop(&mut self, prop_id: PropId) {
         let ref_id = self.stack.pop().unwrap() as usize;
-        let obj = &mut self.allocations[ref_id];
+        let obj = &mut self.objects[ref_id];
         let prop_idx = self
             .bytecode
-            .object_ids
-            .get(&obj.obj_id)
+            .layouts
+            .get(&obj.layout_id)
             .unwrap()
             .iter()
             .position(|&pid| pid == prop_id)
@@ -209,11 +209,11 @@ impl VM<'_> {
     }
     fn op_push_prop(&mut self, prop_id: PropId) {
         let ref_id = self.stack.pop().unwrap() as usize;
-        let obj = &self.allocations[ref_id];
+        let obj = &self.objects[ref_id];
         let prop_idx = self
             .bytecode
-            .object_ids
-            .get(&obj.obj_id)
+            .layouts
+            .get(&obj.layout_id)
             .unwrap()
             .iter()
             .position(|&pid| pid == prop_id)
@@ -289,17 +289,17 @@ impl VM<'_> {
         let value = self.stack.last().expect("value on stack");
         println!("{value}");
     }
-    fn op_object_id(&mut self, obj_id: ObjectId) {
-        self.stack.push(obj_id.to_value());
+    fn op_layout(&mut self, layout_id: LayoutId) {
+        self.stack.push(layout_id.to_value());
     }
-    fn op_malloc(&mut self, obj_id: ObjectId) {
-        let prop_ids = self.bytecode.object_ids.get(&obj_id).unwrap();
-        let ref_id = self.allocations.len();
+    fn op_malloc(&mut self, layout_id: LayoutId) {
+        let prop_ids = self.bytecode.layouts.get(&layout_id).unwrap();
+        let ref_id = self.objects.len();
         let mut props = vec![0; prop_ids.len()];
         for i in (0..prop_ids.len()).rev() {
             props[i] = self.stack.pop().unwrap();
         }
-        self.allocations.push(Object { obj_id, props });
+        self.objects.push(Object { layout_id, props });
         self.stack.push(ref_id as i64);
     }
 }

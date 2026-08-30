@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::bytecode::{Block, BlockId, ByteCode, DefId, Definition, ObjectId, Op};
+use crate::bytecode::{BlockId, ByteCode, DefId, Definition, LayoutId, Op};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
@@ -14,7 +14,7 @@ pub enum BuiltinType {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
-    ObjectId(ObjectId),
+    Object(LayoutId),
     Unknown,
 }
 
@@ -50,25 +50,27 @@ macro_rules! stack_mutation {
 }
 impl StackMutation {
     // TODO make this mutate
-    fn chain(&self, rhs: &StackMutation) -> StackMutation {
-        for (lhs, rhs) in self.after.iter().rev().zip(rhs.before.iter().rev()) {
-            assert_eq!(lhs, rhs);
+    fn chain(&self, other: &StackMutation) -> StackMutation {
+        for (lhs, rhs) in self.after.iter().rev().zip(other.before.iter().rev()) {
+            if lhs != &Type::Unknown && rhs != &Type::Unknown {
+                assert_eq!(lhs, rhs, "noooo {self:?}  :::  {other:?}");
+            }
         }
-        if self.after.len() >= rhs.before.len() {
+        if self.after.len() >= other.before.len() {
             // (a->b c d) + (c d->) = (a-> b)
-            let mut after = Vec::from(&self.after[..(self.after.len() - rhs.before.len())]);
-            after.append(&mut rhs.after.clone());
+            let mut after = Vec::from(&self.after[..(self.after.len() - other.before.len())]);
+            after.append(&mut other.after.clone());
             StackMutation {
                 before: self.before.clone(),
                 after,
             }
         } else {
             // (a->b) + (c d->e) = (c a->e)
-            let mut before = Vec::from(&rhs.before[..rhs.before.len() - self.after.len()]);
+            let mut before = Vec::from(&other.before[..other.before.len() - self.after.len()]);
             before.append(&mut self.before.clone());
             StackMutation {
                 before,
-                after: rhs.after.clone(),
+                after: other.after.clone(),
             }
         }
     }
@@ -236,6 +238,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         eprintln!("Walking {block_id:?}: {:?}", self.current_type);
         self.blocks.insert(block_id, self.current_type.clone());
         let block = self.types.bytecode.get_block(block_id);
+        eprintln!("{:?}", block.pretty_print());
         for op in block.iter() {
             let sm = self.infer_op(op);
             self.current_type = self.current_type.chain(&sm);
@@ -295,13 +298,12 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Or => stack_mutation!(Bool Bool=>Bool),
             Op::Not => stack_mutation!(Bool=>Bool),
             Op::Print => stack_mutation!(Int=>Int),
-            Op::ObjectId(obj_id) => stack_mutation!(=>ObjectId(obj_id)),
-            Op::Malloc(obj_id) => {
-                let mut sm = stack_mutation!(=>ObjectId(obj_id));
-                let props = self.types.bytecode.object_ids.get(&obj_id).unwrap();
+            Op::Layout(layout_id) => stack_mutation!(=>Object(layout_id)),
+            Op::Malloc(layout_id) => {
+                let mut sm = stack_mutation!(=>Object(layout_id));
+                let props = self.types.bytecode.layouts.get(&layout_id).unwrap();
                 for prop_id in props.iter() {
-                    // TODO get type of props
-                    sm.before.push(Type::Builtin(BuiltinType::Int));
+                    sm.before.push(Type::Unknown);
                 }
                 sm
             }
@@ -338,59 +340,3 @@ mod test {
         test_stack_mutation!((=>Char) + (Int Char=>) == (Int=>));
     }
 }
-
-/*
- *
- * def plus +
- * def main [
- *   1 2 plus
- *   4 *
- * ]
- * Block 0: Int Int -> Int
- * Def 0: Int Int -> Int
- * Block 1:
- *   -> Int Int
- *   ~~~Call def 0~~~???
- *   Int -> Int
- * Def 1:
- *   -> Int
- *
- * def main [
- *   1 2 == if [
- *     3
- *   ] else [
- *     4
- *   ]
- *   5 +
- * ]
- * Block 0: GoToIf Block1; 4; GoTo Block 2
- * Block 1: 3; GoTo Block 2
- * Block 2: 5; +; Return
- *
- * Block 0:
- * Block 1:
- * Block 2: Int -> Int
- *
- *
- * fibo: D0 (spoilers: Int -> Int)
- * Block 0:
- *   Int -> Int Int
- *   ?? D0 ??
- *   Int -> Int
- *   ?? D0 ??
- *   Int Int -> Int
- * Block 1:
- *   Int -> Int
- * Block 2:
- *   ->
- *
- * Initial pass for D0: [Int -> Int, Unknowable]
- * Depends on D0
- * Fold them together to get Int -> Int
- * Derived constraints:
- *   Int Int -> D0
- *   D0 -> Int
- *   Int -> D0
- *   D0 -> Int Int
- * All constraints satisfied!
- */
