@@ -333,6 +333,7 @@ pub struct ByteCode {
     pub defs: Vec<Definition>,
     pub main_id: Option<DefId>,
     pub layouts: HashMap<LayoutId, Vec<PropId>>,
+    pub prop_names: HashMap<PropId, String>,
 }
 
 impl ByteCode {

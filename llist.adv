@@ -33,6 +33,7 @@ def main [
   11 new_list
   22 ll_append
   33 ll_append
+  print
   ll_len
   print
 ]

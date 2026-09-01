@@ -127,6 +127,9 @@ impl<'s> Compiler<'s> {
         } else {
             let prop_id = PropId::new(self.prop_ids.len() as u64);
             self.prop_ids.insert(prop_name.to_string(), prop_id);
+            self.bytecode
+                .prop_names
+                .insert(prop_id, prop_name.to_string());
             prop_id
         }
     }

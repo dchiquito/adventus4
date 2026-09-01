@@ -1,12 +1,62 @@
+use std::fmt::Write;
+
 use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpCode, PropId};
+
+const REF_ID_MASK: usize = 0x8000_0000_0000_0000;
+const ARR_ID_MASK: usize = 0xc000_0000_0000_0000;
 
 struct Object {
     layout_id: LayoutId,
     props: Vec<i64>,
 }
+impl Object {
+    fn is_id(ref_id: i64) -> bool {
+        (ref_id as usize) >> 60 == 0b1000
+    }
+    fn id_to_index(ref_id: i64) -> usize {
+        assert_eq!(ref_id as usize >> 60, 0b1000);
+        (ref_id as usize) ^ REF_ID_MASK
+    }
+    fn index_to_id(index: usize) -> i64 {
+        let id = index ^ REF_ID_MASK;
+        assert_eq!(id >> 60, 0b1000);
+        id as i64
+    }
+
+    fn _prop_idx(&self, bytecode: &ByteCode, prop_id: PropId) -> usize {
+        bytecode
+            .layouts
+            .get(&self.layout_id)
+            .unwrap()
+            .iter()
+            .position(|&pid| pid == prop_id)
+            .unwrap()
+    }
+    fn get_prop(&self, bytecode: &ByteCode, prop_id: PropId) -> i64 {
+        self.props[self._prop_idx(bytecode, prop_id)]
+    }
+    fn get_prop_mut(&mut self, bytecode: &ByteCode, prop_id: PropId) -> &mut i64 {
+        let prop_idx = self._prop_idx(bytecode, prop_id);
+        &mut self.props[prop_idx]
+    }
+}
 
 struct Array {
     elements: Vec<i64>,
+}
+impl Array {
+    fn is_id(ref_id: i64) -> bool {
+        (ref_id as usize) >> 60 == 0b1100
+    }
+    fn id_to_index(arr_id: i64) -> usize {
+        assert_eq!(arr_id as usize >> 60, 0b1100);
+        (arr_id as usize) ^ ARR_ID_MASK
+    }
+    fn index_to_id(index: usize) -> i64 {
+        let id = index ^ ARR_ID_MASK;
+        assert_eq!(id >> 60, 0b1100);
+        id as i64
+    }
 }
 
 struct StackFrame {
@@ -206,32 +256,15 @@ impl VM<'_> {
         self.stack.push(value);
     }
     fn op_bind_prop(&mut self, prop_id: PropId) {
-        let ref_id = self.stack.pop().unwrap() as usize;
+        let ref_id = Object::id_to_index(self.stack.pop().unwrap());
         let obj = &mut self.objects[ref_id];
-        let prop_idx = self
-            .bytecode
-            .layouts
-            .get(&obj.layout_id)
-            .unwrap()
-            .iter()
-            .position(|&pid| pid == prop_id)
-            .unwrap();
-
         let value = self.stack.pop().unwrap();
-        obj.props[prop_idx] = value;
+        *obj.get_prop_mut(self.bytecode, prop_id) = value;
     }
     fn op_push_prop(&mut self, prop_id: PropId) {
-        let ref_id = self.stack.pop().unwrap() as usize;
+        let ref_id = Object::id_to_index(self.stack.pop().unwrap());
         let obj = &self.objects[ref_id];
-        let prop_idx = self
-            .bytecode
-            .layouts
-            .get(&obj.layout_id)
-            .unwrap()
-            .iter()
-            .position(|&pid| pid == prop_id)
-            .unwrap();
-        let prop = obj.props[prop_idx];
+        let prop = obj.get_prop(self.bytecode, prop_id);
         self.stack.push(prop);
     }
     fn op_add(&mut self) {
@@ -298,35 +331,71 @@ impl VM<'_> {
         let a = self.stack.pop().expect("value on stack") == 1;
         self.stack.push((!a) as i64)
     }
+    fn _format_value(&self, w: &mut impl Write, value: i64) -> std::fmt::Result {
+        if Object::is_id(value) {
+            let obj = &self.objects[Object::id_to_index(value)];
+            let layout = self.bytecode.layouts.get(&obj.layout_id).expect("layout");
+            let mut layout_iter = layout.iter();
+            write!(w, "{{")?;
+            if let Some(first_prop_id) = layout_iter.next() {
+                let prop_name = self.bytecode.prop_names.get(first_prop_id).unwrap();
+                write!(w, "{prop_name}: ")?;
+                self._format_value(w, obj.get_prop(self.bytecode, *first_prop_id))?;
+                for prop_id in layout_iter {
+                    let prop_name = self.bytecode.prop_names.get(prop_id).unwrap();
+                    write!(w, ", {prop_name}: ")?;
+                    self._format_value(w, obj.get_prop(self.bytecode, *prop_id))?;
+                }
+            }
+            write!(w, "}}")?;
+        } else if Array::is_id(value) {
+            let array = &self.arrays[Array::id_to_index(value)];
+            let mut elements = array.elements.iter();
+            write!(w, "[")?;
+            if let Some(first) = elements.next() {
+                self._format_value(w, *first)?;
+                for element in elements {
+                    write!(w, ", ",)?;
+                    self._format_value(w, *element)?;
+                }
+            }
+            write!(w, "]")?;
+        } else {
+            write!(w, "{value}")?;
+        }
+        Ok(())
+    }
     fn op_print(&mut self) {
-        let value = self.stack.last().expect("value on stack");
-        println!("{value}");
+        let value = *self.stack.last().expect("value on stack");
+        let mut buf = String::new();
+        self._format_value(&mut buf, value).unwrap();
+        println!("{buf}");
     }
     fn op_layout(&mut self, layout_id: LayoutId) {
         self.stack.push(layout_id.to_value());
     }
     fn op_malloc(&mut self, layout_id: LayoutId) {
         let prop_ids = self.bytecode.layouts.get(&layout_id).unwrap();
-        let ref_id = self.objects.len();
+        let ref_id = Object::index_to_id(self.objects.len());
         let mut props = vec![0; prop_ids.len()];
         for i in (0..prop_ids.len()).rev() {
             props[i] = self.stack.pop().unwrap();
         }
         self.objects.push(Object { layout_id, props });
-        self.stack.push(ref_id as i64);
+        self.stack.push(ref_id);
     }
     fn op_empty_array(&mut self) {
         let len = self.stack.pop().unwrap() as usize;
         let array = Array {
             elements: vec![0; len],
         };
-        let arr_id = self.arrays.len();
+        let arr_id = Array::index_to_id(self.arrays.len());
         self.arrays.push(array);
-        self.stack.push(arr_id as i64);
+        self.stack.push(arr_id);
     }
     fn op_array_get(&mut self) {
         let index = self.stack.pop().unwrap() as usize;
-        let arr_id = self.stack.pop().unwrap() as usize;
+        let arr_id = Array::id_to_index(self.stack.pop().unwrap());
         let array = &self.arrays[arr_id];
         let element = array.elements[index];
         self.stack.push(element);
@@ -334,7 +403,7 @@ impl VM<'_> {
     fn op_array_set(&mut self) {
         let value = self.stack.pop().unwrap();
         let index = self.stack.pop().unwrap() as usize;
-        let arr_id = self.stack.pop().unwrap() as usize;
+        let arr_id = Array::id_to_index(self.stack.pop().unwrap());
         let array = &mut self.arrays[arr_id];
         array.elements[index] = value;
     }
