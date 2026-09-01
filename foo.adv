@@ -8,7 +8,7 @@ def new_list [
 def ll_len :(LinkList -> Int) [
   .next
   dup -1 == if [
-    pop
+    pop # foo
     1
   ] else [
     ll_len

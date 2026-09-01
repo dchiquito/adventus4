@@ -29,6 +29,33 @@ macro_rules! assert_node_id {
         }
     };
 }
+macro_rules! skip_comments {
+    ($cursor:expr) => {
+        while let id = $cursor.node().grammar_id()
+            && (id == DOC_COMMENT || id == CODE_COMMENT)
+        {
+            assert!($cursor.goto_next_sibling());
+        }
+    };
+}
+macro_rules! goto_next_sibling {
+    ($cursor:expr) => {
+        assert!($cursor.goto_next_sibling());
+        skip_comments!($cursor);
+    };
+}
+macro_rules! goto_first_child {
+    ($cursor:expr) => {
+        assert!($cursor.goto_first_child());
+        skip_comments!($cursor);
+    };
+}
+macro_rules! goto_parent {
+    ($cursor:expr) => {
+        assert!($cursor.goto_parent());
+        skip_comments!($cursor);
+    };
+}
 
 fn evaluate_at_compile_time(bytecode: &ByteCode, block_id: BlockId) -> u64 {
     // TODO type check before running the VM
@@ -94,19 +121,21 @@ impl<'s> Compiler<'s> {
         let mut walked = cursor.goto_first_child();
         eprintln!("{:?}", cursor.node());
         while walked {
+            skip_comments!(cursor);
             self.compile_def(&mut cursor);
+            skip_comments!(cursor);
             walked = cursor.goto_next_sibling();
         }
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
         assert_eq!(cursor.node(), root);
         self.bytecode
     }
     fn compile_def(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, DEF, "def");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let name = &self.source[cursor.node().byte_range()];
-        assert!(cursor.goto_next_sibling());
+        goto_next_sibling!(cursor);
 
         let block_id = self.bytecode.new_block();
         let def_id = self.bytecode.new_def(block_id);
@@ -120,13 +149,13 @@ impl<'s> Compiler<'s> {
         // Handle the type signature, if present
         if cursor.node().grammar_id() != EXPRESSION {
             assert_node_id!(cursor, MANUAL_SIGNATURE, "manual_signature");
-            assert!(cursor.goto_first_child());
-            assert!(cursor.goto_next_sibling()); // :
+            goto_first_child!(cursor);
+            goto_next_sibling!(cursor); // :
             let signature = self.compile_signature(cursor);
             eprintln!("  {signature:?}");
             self.bytecode.get_def_mut(def_id).declared_type = Some(signature);
-            assert!(cursor.goto_parent());
-            assert!(cursor.goto_next_sibling());
+            goto_parent!(cursor);
+            goto_next_sibling!(cursor);
         }
 
         {
@@ -136,25 +165,25 @@ impl<'s> Compiler<'s> {
     }
     fn compile_signature(&mut self, cursor: &mut TreeCursor) -> StackMutation {
         assert_node_id!(cursor, SIGNATURE, "signature");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling()); // (
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor); // (
         let mut before = vec![];
         while cursor.node().grammar_id() != SYMBOL_ARROW {
             before.push(self.compile_type(cursor));
-            cursor.goto_next_sibling();
+            goto_next_sibling!(cursor);
         }
-        cursor.goto_next_sibling(); // ->
+        goto_next_sibling!(cursor); // ->
         let mut after = vec![];
         while cursor.node().grammar_id() != SYMBOL_RPAREN {
             after.push(self.compile_type(cursor));
-            cursor.goto_next_sibling();
+            goto_next_sibling!(cursor);
         }
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
         StackMutation::new(before, after)
     }
     fn compile_type(&mut self, cursor: &mut TreeCursor) -> Type {
         assert_node_id!(cursor, TYPE, "type");
-        assert!(cursor.goto_first_child());
+        goto_first_child!(cursor);
         let t = match cursor.node().grammar_id() {
             BUILTIN_TYPE => Type::Builtin(self.compile_builtin_type(cursor)),
             EXPRESSION => {
@@ -172,12 +201,12 @@ impl<'s> Compiler<'s> {
             }
             _ => unreachable!(),
         };
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
         t
     }
     fn compile_builtin_type(&self, cursor: &mut TreeCursor) -> BuiltinType {
         assert_node_id!(cursor, BUILTIN_TYPE, "builtin_type");
-        assert!(cursor.goto_first_child());
+        goto_first_child!(cursor);
         let t = match cursor.node().grammar_id() {
             BUILTIN_TYPE_TYPE => BuiltinType::Type,
             BUILTIN_TYPE_INT => BuiltinType::Int,
@@ -186,7 +215,7 @@ impl<'s> Compiler<'s> {
             BUILTIN_TYPE_NONE => BuiltinType::None,
             _ => unreachable!(),
         };
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
         t
     }
 }
@@ -209,7 +238,7 @@ impl<'a, 's> DefCompiler<'a, 's> {
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
         block_compiler.push(Op::Return);
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
 }
 struct BlockCompiler<'d, 'c, 's> {
@@ -232,7 +261,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
-        assert!(cursor.goto_first_child());
+        goto_first_child!(cursor);
         eprintln!("expression {:?}##", cursor.node().grammar_name());
         match cursor.node().grammar_id() {
             IDENTIFIER => self.compile_identifier(cursor),
@@ -251,7 +280,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 cursor.node().grammar_id()
             ),
         }
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn lookup_builtin(&self, name: &str) -> Option<Builtin> {
         match name {
@@ -289,7 +318,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     }
     fn compile_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, INT, "int");
-        assert!(cursor.goto_first_child());
+        goto_first_child!(cursor);
         eprintln!("{:?}##int", cursor.node().grammar_name());
         match cursor.node().grammar_id() {
             POSITIVE_INT => self.compile_positive_int(cursor),
@@ -300,7 +329,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 cursor.node().grammar_id()
             ),
         }
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_negative_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, NEGATIVE_INT, "negative_int");
@@ -328,26 +357,26 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         while cursor.node().grammar_id() == EXPRESSION {
             self.compile_expression(cursor);
-            assert!(cursor.goto_next_sibling());
+            goto_next_sibling!(cursor);
         }
         eprintln!("{:?}", cursor.node());
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_object(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, OBJECT, "object");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let mut props = vec![];
         while cursor.node().grammar_id() == IDENTIFIER {
             let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
             eprintln!("Propo {prop_name}");
             let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
             props.push(prop_id);
-            assert!(cursor.goto_next_sibling());
+            goto_next_sibling!(cursor);
         }
         // TODO assume no collisions ¯\_(ツ)_/¯
         let layout_id = {
@@ -362,11 +391,11 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .layouts
             .insert(layout_id, props);
         self.push(Op::Layout(layout_id));
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_builtin(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, BUILTIN, "builtin");
-        assert!(cursor.goto_first_child());
+        goto_first_child!(cursor);
         match cursor.node().grammar_id() {
             ADD => self.compile_add(cursor),
             SUB => self.compile_sub(cursor),
@@ -385,12 +414,12 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 cursor.node().grammar_id()
             ),
         }
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_local_bind(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, LOCAL_BIND, "local_bind");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let local_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  lb {:?}", local_name);
         let local_id = if let Some(id) = self.def_compiler.local_map.get(local_name) {
@@ -415,12 +444,12 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let local_id = LocalId::new(local_id as u64);
         self.push(Op::BindLocal(local_id));
 
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_local_var(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, LOCAL_VAR, "local_var");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let local_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  lv {:?}", local_name);
         let local_id = self
@@ -430,33 +459,33 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .unwrap_or_else(|| panic!("local {local_name} is unbound"));
         let local_id = LocalId::new(*local_id as u64);
         self.push(Op::PushLocal(local_id));
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_prop_bind(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, PROP_BIND, "prop_bind");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  ob {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
         self.push(Op::BindProp(prop_id));
 
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_prop_var(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, PROP_VAR, "prop_var");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  ov {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
         self.push(Op::PushProp(prop_id));
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_if(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IF, "if");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let then_block_id = self.def_compiler.compiler.bytecode.new_block();
         let finally_block_id = self.def_compiler.compiler.bytecode.new_block();
         {
@@ -466,30 +495,31 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
         self.push(Op::GoToIf(then_block_id));
 
+        skip_comments!(cursor);
         if cursor.goto_next_sibling() {
             // else
-            assert!(cursor.goto_next_sibling());
+            goto_next_sibling!(cursor);
             self.compile_expression(cursor);
         }
 
         self.push(Op::GoTo(finally_block_id));
         self.block_id = finally_block_id;
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
     fn compile_malloc(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, MALLOC, "malloc");
-        assert!(cursor.goto_first_child());
+        goto_first_child!(cursor);
         let layout_id = self.resolve_type_constraint(cursor);
         let layout_id = LayoutId::new(layout_id);
         self.push(Op::Malloc(layout_id));
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
     }
 }
 impl BlockCompiler<'_, '_, '_> {
     fn resolve_type_constraint(&mut self, cursor: &mut TreeCursor) -> u64 {
         assert_node_id!(cursor, TYPE_CONSTRAINT, "type_constraint");
-        assert!(cursor.goto_first_child());
-        assert!(cursor.goto_next_sibling());
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
         let block_id = self.def_compiler.compiler.bytecode.new_block();
         let mut block_compiler = BlockCompiler::new(self.def_compiler, block_id);
         block_compiler.compile_expression(cursor);
@@ -498,7 +528,7 @@ impl BlockCompiler<'_, '_, '_> {
 
         let layout_id = evaluate_at_compile_time(&self.def_compiler.compiler.bytecode, block_id);
         eprintln!("layout id??? {layout_id}\n\n\n");
-        assert!(cursor.goto_parent());
+        goto_parent!(cursor);
         layout_id
     }
 }
