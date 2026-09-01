@@ -19,6 +19,19 @@ pub enum Type {
     Prop(PropId),
     Unknown,
 }
+impl Type {
+    fn union(&self, other: &Type) -> Result<Type, ()> {
+        if self == other {
+            Ok(self.clone())
+        } else if self == &Type::Unknown {
+            Ok(other.clone())
+        } else if other == &Type::Unknown {
+            Ok(self.clone())
+        } else {
+            Err(())
+        }
+    }
+}
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct StackMutation {
@@ -92,15 +105,20 @@ impl StackMutation {
         }
     }
     fn reconcile(&self, other: &StackMutation) -> StackMutation {
-        if self.after != other.after {
-            panic!("two different types: {self:?} and {other:?}")
-        } else if self.before != other.before {
-            todo!(
-                "This is technically allowed, previous needs to be extended after checking that the subset matches"
-            )
-        } else {
-            self.clone()
-        }
+        let before = self
+            .before
+            .iter()
+            .rev()
+            .zip(other.before.iter().rev())
+            .map(|(x, y)| x.union(y).expect("mismatched types"))
+            .collect();
+        let after = self
+            .after
+            .iter()
+            .zip(other.after.iter())
+            .map(|(x, y)| x.union(y).expect("mismatched types"))
+            .collect();
+        StackMutation { before, after }
     }
 }
 impl std::fmt::Debug for StackMutation {
@@ -272,17 +290,21 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 Op::GoTo(block_id) => {
                     if let Some(previous_type) = self.blocks.get(&block_id) {
                         self.current_type = self.current_type.reconcile(previous_type);
+                        self.blocks.insert(block_id, self.current_type.clone());
+                    } else {
+                        self.walk_block(block_id);
                     }
-                    self.walk_block(block_id);
                     break;
                 }
                 Op::GoToIf(block_id) => {
                     if let Some(previous_type) = self.blocks.get(&block_id) {
                         self.current_type = self.current_type.reconcile(previous_type);
+                        self.blocks.insert(block_id, self.current_type.clone());
+                    } else {
+                        let saved_current_type = self.current_type.clone();
+                        self.walk_block(block_id);
+                        self.current_type = saved_current_type;
                     }
-                    let saved_current_type = self.current_type.clone();
-                    self.walk_block(block_id);
-                    self.current_type = saved_current_type;
                 }
                 _ => {}
             }

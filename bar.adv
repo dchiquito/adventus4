@@ -11,17 +11,29 @@ def fibo: (Int->Int) [
   ]
 ]
 
-def goodfibo: (Int->Int) [
-  loop [
-    dup 1 <= if break
-    print
-    1 -
+def loopfibo: (Int->Int) [
+  dup 1 <= if [
+    pop
+    1
+  ] else [
+    1 >$a
+    1 >$b
+    loop [
+      dup 1 <= if break
+      $a $b + >$c
+      $b >$a
+      $c >$b
+      1 -
+    ]
+    pop
+    $b
   ]
 ]
 
 def main [
-  2 fibo
-  print
-  4 goodfibo
-  print
+  15
+  dup fibo
+  print pop
+  dup loopfibo
+  print pop
 ]

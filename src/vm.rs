@@ -97,7 +97,7 @@ impl<'a> VM<'a> {
         }
     }
     fn step(&mut self, op: &Op) {
-        eprintln!("EXEC {op:?}");
+        // eprintln!("EXEC {op:?}");
         match *op {
             Op::Literal(literal) => self.op_literal(literal),
             Op::Call(def_id) => self.op_call(def_id),
