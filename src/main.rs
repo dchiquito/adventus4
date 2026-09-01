@@ -11,7 +11,11 @@ fn main() {
         eprintln!("{types:?}");
         let mut vm = VM::new_main(&bytecode);
         if let Err(e) = vm.run() {
-            println!("eeee {e:?} {}", e.get_source_string(&source_code));
+            println!(
+                "Run time error {e:?}: line {}: {}",
+                e.get_line_number(&source_code),
+                e.get_source_string(&source_code)
+            );
         }
     }
     // let root_node = tree.root_node();

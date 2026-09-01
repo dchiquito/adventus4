@@ -15,13 +15,22 @@ pub struct Error {
 impl std::error::Error for Error {}
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")?;
+        write!(f, "{:?}", self.kind)?;
         Ok(())
     }
 }
 impl Error {
     pub fn get_source_string<'a>(&self, source: &'a str) -> &'a str {
         &source[self.range.clone()]
+    }
+    pub fn get_line_number(&self, source: &str) -> usize {
+        let mut lines = 1;
+        for i in 0..self.range.start {
+            if source.as_bytes()[i] == b'\n' {
+                lines += 1;
+            }
+        }
+        lines
     }
 }
 
