@@ -76,6 +76,7 @@ enum Builtin {
     Not,
     Print,
     Break,
+    Return,
 }
 
 pub struct Compiler<'s> {
@@ -297,6 +298,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             "not" => Some(Builtin::Not),
             "print" => Some(Builtin::Print),
             "break" => Some(Builtin::Break),
+            "return" => Some(Builtin::Return),
             _ => None,
         }
     }
@@ -320,6 +322,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                         .last()
                         .expect("cannot break while outside of loop"),
                 ),
+                Builtin::Return => Op::Return,
             };
             self.push(op);
         } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {

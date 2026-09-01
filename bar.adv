@@ -15,19 +15,19 @@ def loopfibo: (Int->Int) [
   dup 1 <= if [
     pop
     1
-  ] else [
-    1 >$a
-    1 >$b
-    loop [
-      dup 1 <= if break
-      $a $b + >$c
-      $b >$a
-      $c >$b
-      1 -
-    ]
-    pop
-    $b
+    return
   ]
+  1 >$a
+  1 >$b
+  loop [
+    dup 1 <= if break
+    $a $b + >$c
+    $b >$a
+    $c >$b
+    1 -
+  ]
+  pop
+  $b
 ]
 
 def main [
