@@ -163,6 +163,7 @@ impl<'b> Types<'b> {
     fn generate_def_dependency_graph(&mut self) -> HashMap<DefId, Vec<DefId>> {
         let mut graph = HashMap::new();
         let mut blocks_to_check = vec![];
+        let mut checked_blocks = vec![];
         for def_id in self.bytecode.iter_def_ids() {
             let def = self.bytecode.get_def(def_id);
             blocks_to_check.clear();
@@ -172,6 +173,10 @@ impl<'b> Types<'b> {
             // compute the type of the def.
             if def.declared_type.is_none() {
                 while let Some(block_id) = blocks_to_check.pop() {
+                    if checked_blocks.contains(&block_id) {
+                        continue;
+                    }
+                    checked_blocks.push(block_id);
                     let block = self.bytecode.get_block(block_id);
                     for op in block.iter() {
                         match op {
@@ -184,8 +189,9 @@ impl<'b> Types<'b> {
                                     dependencies.push(called_def_id);
                                 }
                             }
-                            Op::GoTo(next_block_id) => blocks_to_check.push(next_block_id),
-                            Op::GoToIf(next_block_id) => blocks_to_check.push(next_block_id),
+                            Op::GoTo(next_block_id) | Op::GoToIf(next_block_id) => {
+                                blocks_to_check.push(next_block_id)
+                            }
                             _ => {}
                         }
                     }
