@@ -1,4 +1,4 @@
-use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, Op, OpCode, PropId};
+use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpCode, PropId};
 
 struct Object {
     layout_id: LayoutId,
@@ -45,8 +45,8 @@ impl Iterator for VM<'_> {
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Pop => Op::Pop,
-            OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
-            OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
+            OpCode::BindLocal => Op::BindLocal(LocalId::new(self.next_word())),
+            OpCode::PushLocal => Op::PushLocal(LocalId::new(self.next_word())),
             OpCode::BindProp => Op::BindProp(PropId::new(self.next_word())),
             OpCode::PushProp => Op::PushProp(PropId::new(self.next_word())),
             OpCode::Add => Op::Add,
@@ -184,12 +184,12 @@ impl VM<'_> {
     fn op_pop(&mut self) {
         self.stack.pop().unwrap();
     }
-    fn op_bind_local(&mut self, local_id: usize) {
+    fn op_bind_local(&mut self, local_id: LocalId) {
         let value = self.stack.pop().unwrap();
-        self.locals[local_id] = value;
+        self.locals[local_id.to_index()] = value;
     }
-    fn op_push_local(&mut self, local_id: usize) {
-        let value = self.locals[local_id];
+    fn op_push_local(&mut self, local_id: LocalId) {
+        let value = self.locals[local_id.to_index()];
         self.stack.push(value);
     }
     fn op_bind_prop(&mut self, prop_id: PropId) {

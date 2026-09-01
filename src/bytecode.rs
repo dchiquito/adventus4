@@ -86,6 +86,17 @@ opcode_u64_conversions!(
 );
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct LocalId(u64);
+impl LocalId {
+    pub fn new(local_id: u64) -> Self {
+        Self(local_id)
+    }
+    pub fn to_index(&self) -> usize {
+        self.0 as usize
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct PropId(u64);
 impl PropId {
     pub fn new(prop_id: u64) -> Self {
@@ -133,8 +144,8 @@ pub enum Op {
     Dup,
     Swap,
     Pop,
-    BindLocal(usize),
-    PushLocal(usize),
+    BindLocal(LocalId),
+    PushLocal(LocalId),
     BindProp(PropId),
     PushProp(PropId),
     Add,
@@ -201,8 +212,8 @@ impl Block {
             Op::Call(def_id) => Some(def_id.0),
             Op::GoTo(block_id) => Some(block_id.0),
             Op::GoToIf(block_id) => Some(block_id.0),
-            Op::BindLocal(local_id) => Some(local_id as u64),
-            Op::PushLocal(local_id) => Some(local_id as u64),
+            Op::BindLocal(local_id) => Some(local_id.0),
+            Op::PushLocal(local_id) => Some(local_id.0),
             Op::BindProp(prop_id) => Some(prop_id.0),
             Op::PushProp(prop_id) => Some(prop_id.0),
             Op::Layout(layout_id) => Some(layout_id.0),
@@ -249,8 +260,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Pop => Op::Pop,
-            OpCode::BindLocal => Op::BindLocal(self.next_word() as usize),
-            OpCode::PushLocal => Op::PushLocal(self.next_word() as usize),
+            OpCode::BindLocal => Op::BindLocal(LocalId(self.next_word())),
+            OpCode::PushLocal => Op::PushLocal(LocalId(self.next_word())),
             OpCode::BindProp => Op::BindProp(PropId(self.next_word())),
             OpCode::PushProp => Op::PushProp(PropId(self.next_word())),
             OpCode::Add => Op::Add,

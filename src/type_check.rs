@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::bytecode::{BlockId, ByteCode, DefId, Definition, LayoutId, Op};
+use crate::bytecode::{BlockId, ByteCode, DefId, Definition, LayoutId, LocalId, Op, PropId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
@@ -15,6 +15,8 @@ pub enum BuiltinType {
 pub enum Type {
     Builtin(BuiltinType),
     Object(LayoutId),
+    Local(LocalId),
+    Prop(PropId),
     Unknown,
 }
 
@@ -35,6 +37,12 @@ macro_rules! stack_mutation {
             after: vec![Type::$a_field($a_id)],
         }
     };
+    ($field:ident($id:ident) =>) => {
+        StackMutation {
+            before: vec![Type::$field($id)],
+            after: vec![],
+        }
+    };
     (=> $field:ident($id:ident)) => {
         StackMutation {
             before: vec![],
@@ -43,9 +51,15 @@ macro_rules! stack_mutation {
     };
     ($($before:ident) * => $($after:ident) *) => {
         StackMutation {
-            before: vec![$(Type::Builtin(BuiltinType::$before)),*],
-            after: vec![$(Type::Builtin(BuiltinType::$after)),*],
+            before: vec![$(stack_mutation!(literal $before)),*],
+            after: vec![$(stack_mutation!(literal $after)),*],
         }
+    };
+    (literal Unknown) => {
+        Type::Unknown
+    };
+    (literal $builtin:ident) => {
+        Type::Builtin(BuiltinType::$builtin)
     };
 }
 impl StackMutation {
@@ -53,7 +67,10 @@ impl StackMutation {
     fn chain(&self, other: &StackMutation) -> StackMutation {
         for (lhs, rhs) in self.after.iter().rev().zip(other.before.iter().rev()) {
             if lhs != &Type::Unknown && rhs != &Type::Unknown {
-                assert_eq!(lhs, rhs, "noooo {self:?}  :::  {other:?}");
+                assert_eq!(
+                    lhs, rhs,
+                    "noooo {self:?}  :::  {other:?}\n{lhs:?} != {rhs:?}"
+                );
             }
         }
         if self.after.len() >= other.before.len() {
@@ -241,6 +258,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         eprintln!("{:?}", block.pretty_print());
         for op in block.iter() {
             let sm = self.infer_op(op);
+            eprintln!("ct {:?} sm {:?} op {:?}", self.current_type, sm, op);
             self.current_type = self.current_type.chain(&sm);
             match op {
                 Op::Return => {
@@ -277,13 +295,13 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Return => stack_mutation!(=>),
             Op::GoTo(_) => stack_mutation!(=>),
             Op::GoToIf(_) => stack_mutation!(Bool=>),
-            Op::Dup => stack_mutation!(Int=>Int Int),
-            Op::Swap => stack_mutation!(Int Int=>Int Int),
-            Op::Pop => stack_mutation!(Int=>),
-            Op::BindLocal(_) => stack_mutation!(Int=>),
-            Op::PushLocal(_) => stack_mutation!(=>Int),
-            Op::BindProp(_) => stack_mutation!(Int=>),
-            Op::PushProp(_) => stack_mutation!(=>Int),
+            Op::Dup => stack_mutation!(Unknown=>Unknown Unknown),
+            Op::Swap => stack_mutation!(Unknown Unknown=>Unknown Unknown),
+            Op::Pop => stack_mutation!(Unknown=>),
+            Op::BindLocal(_local_id) => stack_mutation!(Unknown=>),
+            Op::PushLocal(_local_id) => stack_mutation!(=>Unknown),
+            Op::BindProp(_prop_id) => stack_mutation!(Unknown Unknown=>),
+            Op::PushProp(_prop_id) => stack_mutation!(Unknown=>Unknown),
             Op::Add => stack_mutation!(Int Int=>Int),
             Op::Sub => stack_mutation!(Int Int=>Int),
             Op::Mul => stack_mutation!(Int Int=>Int),
@@ -297,7 +315,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::And => stack_mutation!(Bool Bool=>Bool),
             Op::Or => stack_mutation!(Bool Bool=>Bool),
             Op::Not => stack_mutation!(Bool=>Bool),
-            Op::Print => stack_mutation!(Int=>Int),
+            Op::Print => stack_mutation!(Unknown=>Unknown),
             Op::Layout(layout_id) => stack_mutation!(=>Object(layout_id)),
             Op::Malloc(layout_id) => {
                 let mut sm = stack_mutation!(=>Object(layout_id));

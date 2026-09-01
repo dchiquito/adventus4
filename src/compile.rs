@@ -7,7 +7,7 @@ use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
-    bytecode::{BlockId, ByteCode, DefId, LayoutId, Op, PropId},
+    bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId},
     type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
 };
@@ -412,6 +412,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 .incr_local_size();
             id
         };
+        let local_id = LocalId::new(local_id as u64);
         self.push(Op::BindLocal(local_id));
 
         assert!(cursor.goto_parent());
@@ -427,7 +428,8 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .local_map
             .get(local_name)
             .unwrap_or_else(|| panic!("local {local_name} is unbound"));
-        self.push(Op::PushLocal(*local_id));
+        let local_id = LocalId::new(*local_id as u64);
+        self.push(Op::PushLocal(local_id));
         assert!(cursor.goto_parent());
     }
     fn compile_prop_bind(&mut self, cursor: &mut TreeCursor) {
