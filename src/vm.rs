@@ -2,6 +2,31 @@ use std::fmt::Write;
 
 use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpCode, PropId};
 
+#[derive(Debug)]
+pub enum ErrorKind {
+    EmptyStack,
+    Unknown,
+}
+#[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+    range: std::ops::Range<usize>,
+}
+impl std::error::Error for Error {}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")?;
+        Ok(())
+    }
+}
+impl Error {
+    pub fn get_source_string<'a>(&self, source: &'a str) -> &'a str {
+        &source[self.range.clone()]
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
 const REF_ID_MASK: usize = 0x8000_0000_0000_0000;
 const ARR_ID_MASK: usize = 0xc000_0000_0000_0000;
 
@@ -151,46 +176,60 @@ impl<'a> VM<'a> {
             arrays,
         }
     }
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         while let Some(op) = self.next() {
-            self.step(&op);
+            self.step(&op)?;
         }
+        Ok(())
     }
-    fn step(&mut self, op: &Op) {
+    fn step(&mut self, op: &Op) -> Result<()> {
         // eprintln!("EXEC {op:?}");
         match *op {
             Op::Literal(literal) => self.op_literal(literal),
             Op::Call(def_id) => self.op_call(def_id),
             Op::Return => self.op_return(),
             Op::GoTo(block_id) => self.op_go_to(block_id),
-            Op::GoToIf(block_id) => self.op_go_to_if(block_id),
+            Op::GoToIf(block_id) => self.op_go_to_if(block_id)?,
             Op::Dup => self.op_dup(),
-            Op::Swap => self.op_swap(),
-            Op::Pop => self.op_pop(),
-            Op::BindLocal(local_id) => self.op_bind_local(local_id),
+            Op::Swap => self.op_swap()?,
+            Op::Pop => self.op_pop()?,
+            Op::BindLocal(local_id) => self.op_bind_local(local_id)?,
             Op::PushLocal(local_id) => self.op_push_local(local_id),
-            Op::BindProp(prop_id) => self.op_bind_prop(prop_id),
-            Op::PushProp(prop_id) => self.op_push_prop(prop_id),
-            Op::Add => self.op_add(),
-            Op::Sub => self.op_sub(),
-            Op::Mul => self.op_mul(),
-            Op::Div => self.op_div(),
-            Op::Eq => self.op_eq(),
-            Op::Ne => self.op_ne(),
-            Op::Gt => self.op_gt(),
-            Op::Lt => self.op_lt(),
-            Op::Gte => self.op_gte(),
-            Op::Lte => self.op_lte(),
-            Op::And => self.op_and(),
-            Op::Or => self.op_or(),
-            Op::Not => self.op_not(),
+            Op::BindProp(prop_id) => self.op_bind_prop(prop_id)?,
+            Op::PushProp(prop_id) => self.op_push_prop(prop_id)?,
+            Op::Add => self.op_add()?,
+            Op::Sub => self.op_sub()?,
+            Op::Mul => self.op_mul()?,
+            Op::Div => self.op_div()?,
+            Op::Eq => self.op_eq()?,
+            Op::Ne => self.op_ne()?,
+            Op::Gt => self.op_gt()?,
+            Op::Lt => self.op_lt()?,
+            Op::Gte => self.op_gte()?,
+            Op::Lte => self.op_lte()?,
+            Op::And => self.op_and()?,
+            Op::Or => self.op_or()?,
+            Op::Not => self.op_not()?,
             Op::Print => self.op_print(),
             Op::Layout(layout_id) => self.op_layout(layout_id),
-            Op::Malloc(layout_id) => self.op_malloc(layout_id),
-            Op::EmptyArray => self.op_empty_array(),
-            Op::ArrayGet => self.op_array_get(),
-            Op::ArraySet => self.op_array_set(),
+            Op::Malloc(layout_id) => self.op_malloc(layout_id)?,
+            Op::EmptyArray => self.op_empty_array()?,
+            Op::ArrayGet => self.op_array_get()?,
+            Op::ArraySet => self.op_array_set()?,
         }
+        Ok(())
+    }
+}
+impl VM<'_> {
+    fn error(&self, kind: ErrorKind) -> Error {
+        let range = self.bytecode.source_map.get(self.block_id, self.pc - 1);
+        Error { kind, range }
+    }
+    pub fn pop(&mut self) -> Result<i64> {
+        self.stack.pop().ok_or(self.error(ErrorKind::EmptyStack))
+    }
+    pub fn stack_len(&self) -> usize {
+        self.stack.len()
     }
 }
 impl VM<'_> {
@@ -227,109 +266,128 @@ impl VM<'_> {
         self.block_id = block_id;
         self.pc = 0;
     }
-    fn op_go_to_if(&mut self, block_id: BlockId) {
-        let value = self.stack.pop().unwrap();
+    fn op_go_to_if(&mut self, block_id: BlockId) -> Result<()> {
+        let value = self.pop()?;
         if value == 1 {
             self.block_id = block_id;
             self.pc = 0;
         }
+        Ok(())
     }
     fn op_dup(&mut self) {
         let peek = *self.stack.last().unwrap();
         self.stack.push(peek);
     }
-    fn op_swap(&mut self) {
-        let b = self.stack.pop().unwrap();
-        let a = self.stack.pop().unwrap();
+    fn op_swap(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
         self.stack.push(b);
         self.stack.push(a);
+        Ok(())
     }
-    fn op_pop(&mut self) {
-        self.stack.pop().unwrap();
+    fn op_pop(&mut self) -> Result<()> {
+        self.pop()?;
+        Ok(())
     }
-    fn op_bind_local(&mut self, local_id: LocalId) {
-        let value = self.stack.pop().unwrap();
+    fn op_bind_local(&mut self, local_id: LocalId) -> Result<()> {
+        let value = self.pop()?;
         self.locals[local_id.to_index()] = value;
+        Ok(())
     }
     fn op_push_local(&mut self, local_id: LocalId) {
         let value = self.locals[local_id.to_index()];
         self.stack.push(value);
     }
-    fn op_bind_prop(&mut self, prop_id: PropId) {
-        let ref_id = Object::id_to_index(self.stack.pop().unwrap());
+    fn op_bind_prop(&mut self, prop_id: PropId) -> Result<()> {
+        let ref_id = Object::id_to_index(self.pop()?);
+        let value = self.pop()?;
         let obj = &mut self.objects[ref_id];
-        let value = self.stack.pop().unwrap();
         *obj.get_prop_mut(self.bytecode, prop_id) = value;
+        Ok(())
     }
-    fn op_push_prop(&mut self, prop_id: PropId) {
-        let ref_id = Object::id_to_index(self.stack.pop().unwrap());
+    fn op_push_prop(&mut self, prop_id: PropId) -> Result<()> {
+        let ref_id = Object::id_to_index(self.pop()?);
         let obj = &self.objects[ref_id];
         let prop = obj.get_prop(self.bytecode, prop_id);
         self.stack.push(prop);
+        Ok(())
     }
-    fn op_add(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push(a + b)
+    fn op_add(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push(a + b);
+        Ok(())
     }
-    fn op_sub(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push(a - b)
+    fn op_sub(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push(a - b);
+        Ok(())
     }
-    fn op_mul(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push(a * b)
+    fn op_mul(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push(a * b);
+        Ok(())
     }
-    fn op_div(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push(a / b)
+    fn op_div(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push(a / b);
+        Ok(())
     }
-    fn op_eq(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push((a == b) as i64)
+    fn op_eq(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push((a == b) as i64);
+        Ok(())
     }
-    fn op_ne(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push((a != b) as i64)
+    fn op_ne(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push((a != b) as i64);
+        Ok(())
     }
-    fn op_gt(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push((a > b) as i64)
+    fn op_gt(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push((a > b) as i64);
+        Ok(())
     }
-    fn op_lt(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push((a < b) as i64)
+    fn op_lt(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push((a < b) as i64);
+        Ok(())
     }
-    fn op_gte(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push((a >= b) as i64)
+    fn op_gte(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push((a >= b) as i64);
+        Ok(())
     }
-    fn op_lte(&mut self) {
-        let b = self.stack.pop().expect("value on stack");
-        let a = self.stack.pop().expect("value on stack");
-        self.stack.push((a <= b) as i64)
+    fn op_lte(&mut self) -> Result<()> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push((a <= b) as i64);
+        Ok(())
     }
-    fn op_and(&mut self) {
-        let b = self.stack.pop().expect("value on stack") == 1;
-        let a = self.stack.pop().expect("value on stack") == 1;
-        self.stack.push((a && b) as i64)
+    fn op_and(&mut self) -> Result<()> {
+        let b = self.pop()? == 1;
+        let a = self.pop()? == 1;
+        self.stack.push((a && b) as i64);
+        Ok(())
     }
-    fn op_or(&mut self) {
-        let b = self.stack.pop().expect("value on stack") == 1;
-        let a = self.stack.pop().expect("value on stack") == 1;
-        self.stack.push((a || b) as i64)
+    fn op_or(&mut self) -> Result<()> {
+        let b = self.pop()? == 1;
+        let a = self.pop()? == 1;
+        self.stack.push((a || b) as i64);
+        Ok(())
     }
-    fn op_not(&mut self) {
-        let a = self.stack.pop().expect("value on stack") == 1;
-        self.stack.push((!a) as i64)
+    fn op_not(&mut self) -> Result<()> {
+        let a = self.pop()? == 1;
+        self.stack.push((!a) as i64);
+        Ok(())
     }
     fn _format_value(&self, w: &mut impl Write, value: i64) -> std::fmt::Result {
         if Object::is_id(value) {
@@ -374,45 +432,41 @@ impl VM<'_> {
     fn op_layout(&mut self, layout_id: LayoutId) {
         self.stack.push(layout_id.to_value());
     }
-    fn op_malloc(&mut self, layout_id: LayoutId) {
+    fn op_malloc(&mut self, layout_id: LayoutId) -> Result<()> {
         let prop_ids = self.bytecode.layouts.get(&layout_id).unwrap();
         let ref_id = Object::index_to_id(self.objects.len());
         let mut props = vec![0; prop_ids.len()];
         for i in (0..prop_ids.len()).rev() {
-            props[i] = self.stack.pop().unwrap();
+            props[i] = self.pop()?;
         }
         self.objects.push(Object { layout_id, props });
         self.stack.push(ref_id);
+        Ok(())
     }
-    fn op_empty_array(&mut self) {
-        let len = self.stack.pop().unwrap() as usize;
+    fn op_empty_array(&mut self) -> Result<()> {
+        let len = self.pop()? as usize;
         let array = Array {
             elements: vec![0; len],
         };
         let arr_id = Array::index_to_id(self.arrays.len());
         self.arrays.push(array);
         self.stack.push(arr_id);
+        Ok(())
     }
-    fn op_array_get(&mut self) {
-        let index = self.stack.pop().unwrap() as usize;
-        let arr_id = Array::id_to_index(self.stack.pop().unwrap());
+    fn op_array_get(&mut self) -> Result<()> {
+        let index = self.pop()? as usize;
+        let arr_id = Array::id_to_index(self.pop()?);
         let array = &self.arrays[arr_id];
         let element = array.elements[index];
         self.stack.push(element);
+        Ok(())
     }
-    fn op_array_set(&mut self) {
-        let value = self.stack.pop().unwrap();
-        let index = self.stack.pop().unwrap() as usize;
-        let arr_id = Array::id_to_index(self.stack.pop().unwrap());
+    fn op_array_set(&mut self) -> Result<()> {
+        let value = self.pop()?;
+        let index = self.pop()? as usize;
+        let arr_id = Array::id_to_index(self.pop()?);
         let array = &mut self.arrays[arr_id];
         array.elements[index] = value;
-    }
-}
-impl VM<'_> {
-    pub fn pop_from_stack(&mut self) -> i64 {
-        self.stack.pop().unwrap()
-    }
-    pub fn stack_len(&self) -> usize {
-        self.stack.len()
+        Ok(())
     }
 }

@@ -7,7 +7,7 @@ use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
-    bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId},
+    bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpSize, PropId},
     type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
 };
@@ -61,10 +61,9 @@ fn evaluate_at_compile_time(bytecode: &ByteCode, block_id: BlockId) -> u64 {
     // TODO type check before running the VM
     let def_id = DefId::new(0); // TODO this is wrong
     let mut vm = VM::new(bytecode, def_id, block_id);
-    vm.run();
-    let obj_id = vm.pop_from_stack() as u64;
-    assert_eq!(vm.stack_len(), 0);
-    obj_id
+    vm.run().expect("no errors pls");
+    assert_eq!(vm.stack_len(), 1);
+    vm.pop().unwrap() as u64
 }
 
 enum Builtin {
@@ -269,8 +268,8 @@ impl<'a, 's> DefCompiler<'a, 's> {
     fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: BlockId) {
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
-        block_compiler.push(Op::Return);
         goto_parent!(cursor);
+        block_compiler.push(cursor, Op::Return);
     }
 }
 struct BlockCompiler<'d, 'c, 's> {
@@ -284,12 +283,17 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             block_id,
         }
     }
-    fn push(&mut self, op: Op) {
-        self.def_compiler
-            .compiler
-            .bytecode
-            .get_block_mut(self.block_id)
-            .push(op);
+    fn push(&mut self, cursor: &TreeCursor, op: Op) {
+        let bytecode = &mut self.def_compiler.compiler.bytecode;
+        match bytecode.get_block_mut(self.block_id).push(op) {
+            OpSize::One => {}
+            OpSize::Two => bytecode
+                .source_map
+                .push(self.block_id, cursor.node().byte_range()),
+        }
+        bytecode
+            .source_map
+            .push(self.block_id, cursor.node().byte_range());
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
@@ -340,10 +344,10 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 Builtin::ArrayGet => Op::ArrayGet,
                 Builtin::ArraySet => Op::ArraySet,
             };
-            self.push(op);
+            self.push(cursor, op);
         } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
             eprintln!("Looked up {def_id:?}");
-            self.push(Op::Call(def_id));
+            self.push(cursor, Op::Call(def_id));
         } else {
             panic!("{string_repr} is undefined");
         }
@@ -373,7 +377,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.push(Op::Literal(int));
+        self.push(cursor, Op::Literal(int));
     }
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
@@ -385,7 +389,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.push(Op::Literal(int));
+        self.push(cursor, Op::Literal(int));
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");
@@ -423,7 +427,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .bytecode
             .layouts
             .insert(layout_id, props);
-        self.push(Op::Layout(layout_id));
+        self.push(cursor, Op::Layout(layout_id));
         goto_parent!(cursor);
     }
     fn compile_builtin(&mut self, cursor: &mut TreeCursor) {
@@ -475,7 +479,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             id
         };
         let local_id = LocalId::new(local_id as u64);
-        self.push(Op::BindLocal(local_id));
+        self.push(cursor, Op::BindLocal(local_id));
 
         goto_parent!(cursor);
     }
@@ -491,7 +495,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .get(local_name)
             .unwrap_or_else(|| panic!("local {local_name} is unbound"));
         let local_id = LocalId::new(*local_id as u64);
-        self.push(Op::PushLocal(local_id));
+        self.push(cursor, Op::PushLocal(local_id));
         goto_parent!(cursor);
     }
     fn compile_prop_bind(&mut self, cursor: &mut TreeCursor) {
@@ -501,7 +505,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  ob {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
-        self.push(Op::BindProp(prop_id));
+        self.push(cursor, Op::BindProp(prop_id));
 
         goto_parent!(cursor);
     }
@@ -512,7 +516,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("  ov {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
-        self.push(Op::PushProp(prop_id));
+        self.push(cursor, Op::PushProp(prop_id));
         goto_parent!(cursor);
     }
     fn compile_if(&mut self, cursor: &mut TreeCursor) {
@@ -524,9 +528,9 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         {
             let mut then_block_compiler = BlockCompiler::new(self.def_compiler, then_block_id);
             then_block_compiler.compile_expression(cursor);
-            then_block_compiler.push(Op::GoTo(finally_block_id));
+            then_block_compiler.push(cursor, Op::GoTo(finally_block_id));
         }
-        self.push(Op::GoToIf(then_block_id));
+        self.push(cursor, Op::GoToIf(then_block_id));
 
         skip_comments!(cursor);
         if cursor.goto_next_sibling() {
@@ -535,7 +539,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             self.compile_expression(cursor);
         }
 
-        self.push(Op::GoTo(finally_block_id));
+        self.push(cursor, Op::GoTo(finally_block_id));
         self.block_id = finally_block_id;
         goto_parent!(cursor);
     }
@@ -552,9 +556,9 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             {
                 let mut loop_block_compiler = BlockCompiler::new(self.def_compiler, loop_block_id);
                 loop_block_compiler.compile_expression(cursor);
-                loop_block_compiler.push(Op::GoTo(loop_block_id));
+                loop_block_compiler.push(cursor, Op::GoTo(loop_block_id));
             }
-            self.push(Op::GoTo(loop_block_id));
+            self.push(cursor, Op::GoTo(loop_block_id));
         }
         self.def_compiler
             .loop_stack
@@ -568,7 +572,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_first_child!(cursor);
         let layout_id = self.resolve_type_constraint(cursor);
         let layout_id = LayoutId::new(layout_id);
-        self.push(Op::Malloc(layout_id));
+        self.push(cursor, Op::Malloc(layout_id));
         goto_parent!(cursor);
     }
 }
@@ -594,7 +598,7 @@ macro_rules! compile_builtin_method {
     ($method:ident, $lower:ident, $pascal:ident, $upper:ident) => {
         fn $method(&mut self, cursor: &mut TreeCursor) {
             assert_node_id!(cursor, $upper, stringify!($lower));
-            self.push(Op::$pascal);
+            self.push(cursor, Op::$pascal);
         }
     };
 }

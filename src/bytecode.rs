@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 use crate::type_check::StackMutation;
 
@@ -216,8 +216,12 @@ impl From<Op> for OpCode {
 pub struct Block {
     pub data: Vec<u64>,
 }
+pub enum OpSize {
+    One,
+    Two,
+}
 impl Block {
-    pub fn push(&mut self, op: Op) {
+    pub fn push(&mut self, op: Op) -> OpSize {
         self.data.push(u64::from(OpCode::from(op)));
         if let Some(word) = match op {
             Op::Literal(literal) => Some(literal as u64),
@@ -232,7 +236,10 @@ impl Block {
             Op::Malloc(layout_id) => Some(layout_id.0),
             _ => None,
         } {
-            self.data.push(word)
+            self.data.push(word);
+            OpSize::Two
+        } else {
+            OpSize::One
         }
     }
     pub fn iter(&self) -> BlockIterator<'_> {
@@ -328,12 +335,26 @@ impl Definition {
 }
 
 #[derive(Debug, Default)]
+pub struct SourceMap {
+    map: HashMap<BlockId, Vec<Range<usize>>>,
+}
+impl SourceMap {
+    pub fn push(&mut self, block_id: BlockId, range: Range<usize>) {
+        self.map.entry(block_id).or_default().push(range);
+    }
+    pub fn get(&self, block_id: BlockId, index: usize) -> Range<usize> {
+        self.map.get(&block_id).unwrap()[index].clone()
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct ByteCode {
     pub blocks: Vec<Block>,
     pub defs: Vec<Definition>,
     pub main_id: Option<DefId>,
     pub layouts: HashMap<LayoutId, Vec<PropId>>,
     pub prop_names: HashMap<PropId, String>,
+    pub source_map: SourceMap,
 }
 
 impl ByteCode {

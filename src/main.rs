@@ -10,7 +10,9 @@ fn main() {
         types.infer();
         eprintln!("{types:?}");
         let mut vm = VM::new_main(&bytecode);
-        vm.run();
+        if let Err(e) = vm.run() {
+            println!("eeee {e:?} {}", e.get_source_string(&source_code));
+        }
     }
     // let root_node = tree.root_node();
     // eprintln!("{root_node:?}")

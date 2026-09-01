@@ -1,0 +1,52 @@
+def List {arr cap len}
+def new_list [
+  [10 empty_array] 10 0
+  (List) malloc
+]
+def _list_double [
+  >$list
+  [$list.cap 2 *] $list>.cap
+  [$list.cap empty_array] >$new_arr
+  0 >$i
+  loop [
+    $i $list.len >= if break
+    $new_arr $i [$list.arr $i array_get] array_set
+    $i 1 + >$i
+  ]
+  $new_arr $list>.arr
+]
+def _list_expand_if_full [
+  >$list
+  $list.len $list.cap == if [
+    $list _list_double
+  ]
+]
+def get [
+  >$i
+  // TODO bounds check
+  .arr $i array_get
+]
+def push [
+  >$value
+  >$list
+  $list _list_expand_if_full
+  $list.arr $list.len $value array_set
+  $list.len 1 + $list>.len
+]
+def main [
+  new_list >$list
+  $list print pop
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+  $list print 123 push
+]
