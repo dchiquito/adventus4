@@ -75,6 +75,7 @@ enum Builtin {
     Or,
     Not,
     Print,
+    Break,
 }
 
 pub struct Compiler<'s> {
@@ -224,14 +225,17 @@ struct DefCompiler<'a, 's> {
     compiler: &'a mut Compiler<'s>,
     def_id: DefId,
     local_map: HashMap<String, usize>,
+    loop_stack: Vec<BlockId>,
 }
 impl<'a, 's> DefCompiler<'a, 's> {
     fn new(compiler: &'a mut Compiler<'s>, def_id: DefId) -> Self {
         let local_map = HashMap::default();
+        let loop_stack = vec![];
         Self {
             compiler,
             def_id,
             local_map,
+            loop_stack,
         }
     }
     fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: BlockId) {
@@ -274,6 +278,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             PROP_BIND => self.compile_prop_bind(cursor),
             PROP_VAR => self.compile_prop_var(cursor),
             IF => self.compile_if(cursor),
+            LOOP => self.compile_loop(cursor),
             _ => unreachable!(
                 "{} ({})",
                 cursor.node().grammar_name(),
@@ -291,6 +296,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             "or" => Some(Builtin::Or),
             "not" => Some(Builtin::Not),
             "print" => Some(Builtin::Print),
+            "break" => Some(Builtin::Break),
             _ => None,
         }
     }
@@ -307,6 +313,13 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 Builtin::Or => Op::Or,
                 Builtin::Not => Op::Not,
                 Builtin::Print => Op::Print,
+                Builtin::Break => Op::GoTo(
+                    *self
+                        .def_compiler
+                        .loop_stack
+                        .last()
+                        .expect("cannot break while outside of loop"),
+                ),
             };
             self.push(op);
         } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
@@ -361,7 +374,8 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_next_sibling!(cursor);
         while cursor.node().grammar_id() == EXPRESSION {
             self.compile_expression(cursor);
-            goto_next_sibling!(cursor);
+            cursor.goto_next_sibling();
+            skip_comments!(cursor);
         }
         eprintln!("{:?}", cursor.node());
         goto_parent!(cursor);
@@ -503,6 +517,30 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
 
         self.push(Op::GoTo(finally_block_id));
+        self.block_id = finally_block_id;
+        goto_parent!(cursor);
+    }
+    fn compile_loop(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, LOOP, "loop");
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
+        eprintln!("looperating {:?}", cursor.node());
+        // [self.block_id] -> [loop_block_id] -> [finally_block_id]
+        let finally_block_id = self.def_compiler.compiler.bytecode.new_block();
+        self.def_compiler.loop_stack.push(finally_block_id);
+        {
+            let loop_block_id = self.def_compiler.compiler.bytecode.new_block();
+            {
+                let mut loop_block_compiler = BlockCompiler::new(self.def_compiler, loop_block_id);
+                loop_block_compiler.compile_expression(cursor);
+                loop_block_compiler.push(Op::GoTo(loop_block_id));
+            }
+            self.push(Op::GoTo(loop_block_id));
+        }
+        self.def_compiler
+            .loop_stack
+            .pop()
+            .expect("while block to pop");
         self.block_id = finally_block_id;
         goto_parent!(cursor);
     }

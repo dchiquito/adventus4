@@ -16,6 +16,8 @@ export default grammar({
     keyword_def: $ => "def",
     keyword_if: $ => "if",
     keyword_else: $ => "else",
+    keyword_loop: $ => "loop",
+    keyword_break: $ => "break",
     keyword_malloc: $ => "malloc",
     symbol_lbracket: $ => "[",
     symbol_rbracket: $ => "]",
@@ -98,6 +100,11 @@ export default grammar({
       optional(seq($.keyword_else, $.expression)),
     )),
 
+    loop: $ => seq(
+      $.keyword_loop,
+      $.expression,
+    ),
+
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
     expression: $ => choice(
@@ -110,6 +117,7 @@ export default grammar({
       $.prop_bind,
       $.prop_var,
       $.if,
+      $.loop,
       $.identifier,
     ),
 

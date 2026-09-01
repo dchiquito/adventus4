@@ -21,6 +21,14 @@
       "type": "STRING",
       "value": "else"
     },
+    "keyword_loop": {
+      "type": "STRING",
+      "value": "loop"
+    },
+    "keyword_break": {
+      "type": "STRING",
+      "value": "break"
+    },
     "keyword_malloc": {
       "type": "STRING",
       "value": "malloc"
@@ -361,6 +369,19 @@
         ]
       }
     },
+    "loop": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "keyword_loop"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        }
+      ]
+    },
     "identifier": {
       "type": "PATTERN",
       "value": "[a-zA-Z_][a-zA-Z0-9_]*"
@@ -403,6 +424,10 @@
         {
           "type": "SYMBOL",
           "name": "if"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "loop"
         },
         {
           "type": "SYMBOL",

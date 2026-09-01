@@ -180,6 +180,10 @@
           "named": true
         },
         {
+          "type": "loop",
+          "named": true
+        },
+        {
           "type": "object",
           "named": true
         },
@@ -284,6 +288,25 @@
       "types": [
         {
           "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "loop",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "keyword_loop",
           "named": true
         }
       ]
@@ -547,6 +570,10 @@
   },
   {
     "type": "keyword_if",
+    "named": true
+  },
+  {
+    "type": "keyword_loop",
     "named": true
   },
   {

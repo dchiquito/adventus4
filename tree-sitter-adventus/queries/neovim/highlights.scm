@@ -12,6 +12,7 @@
 (keyword_def) @keyword.function
 (keyword_if) @keyword.conditional
 (keyword_else) @keyword.conditional
+(keyword_loop) @keyword.repeat
 (keyword_malloc) @keyword
 (symbol_lbracket) @punctuation.bracket
 (symbol_rbracket) @punctuation.bracket

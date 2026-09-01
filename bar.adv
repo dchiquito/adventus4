@@ -11,7 +11,17 @@ def fibo: (Int->Int) [
   ]
 ]
 
+def goodfibo: (Int->Int) [
+  loop [
+    dup 1 <= if break
+    print
+    1 -
+  ]
+]
+
 def main [
   2 fibo
+  print
+  4 goodfibo
   print
 ]
