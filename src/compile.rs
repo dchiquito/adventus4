@@ -77,6 +77,30 @@ enum Builtin {
     Print,
     Break,
     Return,
+    EmptyArray,
+    ArrayGet,
+    ArraySet,
+}
+impl TryFrom<&str> for Builtin {
+    type Error = ();
+
+    fn try_from(name: &str) -> Result<Self, Self::Error> {
+        Ok(match name {
+            "dup" => Builtin::Dup,
+            "swap" => Builtin::Swap,
+            "pop" => Builtin::Pop,
+            "and" => Builtin::And,
+            "or" => Builtin::Or,
+            "not" => Builtin::Not,
+            "print" => Builtin::Print,
+            "break" => Builtin::Break,
+            "return" => Builtin::Return,
+            "empty_array" => Builtin::EmptyArray,
+            "array_get" => Builtin::ArrayGet,
+            "array_set" => Builtin::ArraySet,
+            _ => return Err(()),
+        })
+    }
 }
 
 pub struct Compiler<'s> {
@@ -288,25 +312,11 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
         goto_parent!(cursor);
     }
-    fn lookup_builtin(&self, name: &str) -> Option<Builtin> {
-        match name {
-            "dup" => Some(Builtin::Dup),
-            "swap" => Some(Builtin::Swap),
-            "pop" => Some(Builtin::Pop),
-            "and" => Some(Builtin::And),
-            "or" => Some(Builtin::Or),
-            "not" => Some(Builtin::Not),
-            "print" => Some(Builtin::Print),
-            "break" => Some(Builtin::Break),
-            "return" => Some(Builtin::Return),
-            _ => None,
-        }
-    }
     fn compile_identifier(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IDENTIFIER, "identifier");
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("id {string_repr}");
-        if let Some(builtin) = self.lookup_builtin(string_repr) {
+        if let Ok(builtin) = Builtin::try_from(string_repr) {
             let op = match builtin {
                 Builtin::Dup => Op::Dup,
                 Builtin::Swap => Op::Swap,
@@ -323,6 +333,9 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                         .expect("cannot break while outside of loop"),
                 ),
                 Builtin::Return => Op::Return,
+                Builtin::EmptyArray => Op::EmptyArray,
+                Builtin::ArrayGet => Op::ArrayGet,
+                Builtin::ArraySet => Op::ArraySet,
             };
             self.push(op);
         } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {

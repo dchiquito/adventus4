@@ -1,0 +1,38 @@
+
+def LinkList {value next}
+def new_list [
+  -1
+  (LinkList) malloc
+]
+
+def ll_len :(LinkList -> Int) [
+  .next
+  dup -1 == if [
+    pop # foo
+    1
+  ] else [
+    ll_len
+    1 +
+  ]
+]
+def ll_append :(LinkList Int -> LinkList) [
+  >$value
+  dup.next -1 == if [
+    dup
+    $value new_list
+    swap >.next
+  ] else [
+    dup.next $value ll_append
+    pop
+  ]
+]
+
+
+
+def main [
+  11 new_list
+  22 ll_append
+  33 ll_append
+  ll_len
+  print
+]

@@ -32,6 +32,9 @@ pub enum OpCode {
     Print,
     ObjectId,
     Malloc,
+    EmptyArray,
+    ArrayGet,
+    ArraySet,
 }
 macro_rules! opcode_u64_conversions {
     ($($number:expr => $opcode:ident),*,) => {
@@ -83,6 +86,9 @@ opcode_u64_conversions!(
     0x50 => Print,
     0x60 => ObjectId,
     0x61 => Malloc,
+    0x70 => EmptyArray,
+    0x71 => ArrayGet,
+    0x72 => ArraySet,
 );
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -164,6 +170,9 @@ pub enum Op {
     Print,
     Layout(LayoutId),
     Malloc(LayoutId),
+    EmptyArray,
+    ArrayGet,
+    ArraySet,
 }
 impl From<Op> for OpCode {
     fn from(op: Op) -> Self {
@@ -196,6 +205,9 @@ impl From<Op> for OpCode {
             Op::Print => OpCode::Print,
             Op::Layout(_) => OpCode::ObjectId,
             Op::Malloc(_) => OpCode::Malloc,
+            Op::EmptyArray => OpCode::EmptyArray,
+            Op::ArrayGet => OpCode::ArrayGet,
+            Op::ArraySet => OpCode::ArraySet,
         }
     }
 }
@@ -280,6 +292,9 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Print => Op::Print,
             OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word())),
             OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word())),
+            OpCode::EmptyArray => Op::EmptyArray,
+            OpCode::ArrayGet => Op::ArrayGet,
+            OpCode::ArraySet => Op::ArraySet,
         };
         Some(op)
     }

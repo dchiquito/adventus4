@@ -5,6 +5,10 @@ struct Object {
     props: Vec<i64>,
 }
 
+struct Array {
+    elements: Vec<i64>,
+}
+
 struct StackFrame {
     block_id: BlockId,
     pc: usize,
@@ -19,6 +23,7 @@ pub struct VM<'a> {
     stack: Vec<i64>,
     call_stack: Vec<StackFrame>,
     objects: Vec<Object>,
+    arrays: Vec<Array>,
 }
 
 impl VM<'_> {
@@ -65,6 +70,9 @@ impl Iterator for VM<'_> {
             OpCode::Print => Op::Print,
             OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word())),
             OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word())),
+            OpCode::EmptyArray => Op::EmptyArray,
+            OpCode::ArrayGet => Op::ArrayGet,
+            OpCode::ArraySet => Op::ArraySet,
         };
         Some(op)
     }
@@ -81,6 +89,7 @@ impl<'a> VM<'a> {
         let stack = vec![];
         let call_stack = vec![];
         let objects = vec![];
+        let arrays = vec![];
         Self {
             bytecode,
             block_id,
@@ -89,6 +98,7 @@ impl<'a> VM<'a> {
             stack,
             call_stack,
             objects,
+            arrays,
         }
     }
     pub fn run(&mut self) {
@@ -127,6 +137,9 @@ impl<'a> VM<'a> {
             Op::Print => self.op_print(),
             Op::Layout(layout_id) => self.op_layout(layout_id),
             Op::Malloc(layout_id) => self.op_malloc(layout_id),
+            Op::EmptyArray => self.op_empty_array(),
+            Op::ArrayGet => self.op_array_get(),
+            Op::ArraySet => self.op_array_set(),
         }
     }
 }
@@ -301,6 +314,29 @@ impl VM<'_> {
         }
         self.objects.push(Object { layout_id, props });
         self.stack.push(ref_id as i64);
+    }
+    fn op_empty_array(&mut self) {
+        let len = self.stack.pop().unwrap() as usize;
+        let array = Array {
+            elements: vec![0; len],
+        };
+        let arr_id = self.arrays.len();
+        self.arrays.push(array);
+        self.stack.push(arr_id as i64);
+    }
+    fn op_array_get(&mut self) {
+        let index = self.stack.pop().unwrap() as usize;
+        let arr_id = self.stack.pop().unwrap() as usize;
+        let array = &self.arrays[arr_id];
+        let element = array.elements[index];
+        self.stack.push(element);
+    }
+    fn op_array_set(&mut self) {
+        let value = self.stack.pop().unwrap();
+        let index = self.stack.pop().unwrap() as usize;
+        let arr_id = self.stack.pop().unwrap() as usize;
+        let array = &mut self.arrays[arr_id];
+        array.elements[index] = value;
     }
 }
 impl VM<'_> {

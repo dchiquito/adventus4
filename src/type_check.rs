@@ -342,11 +342,14 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Malloc(layout_id) => {
                 let mut sm = stack_mutation!(=>Object(layout_id));
                 let props = self.types.bytecode.layouts.get(&layout_id).unwrap();
-                for prop_id in props.iter() {
+                for _prop_id in props.iter() {
                     sm.before.push(Type::Unknown);
                 }
                 sm
             }
+            Op::EmptyArray => stack_mutation!(Int => Unknown),
+            Op::ArrayGet => stack_mutation!(Unknown Int => Unknown),
+            Op::ArraySet => stack_mutation!(Unknown Int Unknown =>),
         }
     }
 }
