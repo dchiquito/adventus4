@@ -139,8 +139,13 @@ export default grammar({
       $.builtin_type,
       $.expression,
     ),
+
+    code_comment: $ => seq("#", token.immediate(prec(1, /.*/))),
+    doc_comment: $ => seq("//", token.immediate(prec(1, /.*/))),
   },
   extras: $ => [
     /\s/,
+    $.code_comment,
+    $.doc_comment,
   ],
 });

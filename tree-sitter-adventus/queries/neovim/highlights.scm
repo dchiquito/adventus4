@@ -20,3 +20,6 @@
 (symbol_lbrace) @punctuation.bracket
 (symbol_rbrace) @punctuation.bracket
 (symbol_arrow) @punctuation.delimiter
+
+(code_comment) @comment
+(doc_comment) @comment.documentation
