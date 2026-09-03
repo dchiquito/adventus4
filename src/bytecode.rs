@@ -116,11 +116,8 @@ impl LayoutId {
     pub fn new(prop_id: u64) -> Self {
         Self(prop_id)
     }
-    pub fn to_value(&self) -> i64 {
-        self.0 as i64
-    }
-    pub fn from_value(value: i64) -> Self {
-        Self(value as u64)
+    pub fn to_value(&self) -> u64 {
+        self.0
     }
 }
 
@@ -142,7 +139,7 @@ impl DefId {
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
-    Literal(i64),
+    Literal(u64),
     Call(DefId),
     Return,
     GoTo(BlockId),
@@ -271,7 +268,7 @@ impl Iterator for BlockIterator<'_> {
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
-            OpCode::Literal => Op::Literal(self.next_word() as i64),
+            OpCode::Literal => Op::Literal(self.next_word()),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::Return => Op::Return,
             OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
@@ -323,7 +320,7 @@ impl Definition {
             declared_type,
         }
     }
-    pub fn initialize_locals(&self) -> Vec<i64> {
+    pub fn initialize_locals(&self) -> Vec<u64> {
         vec![0; self.local_size]
     }
     pub fn get_local_size(&self) -> usize {

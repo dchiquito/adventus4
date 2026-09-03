@@ -5,6 +5,9 @@ use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpCode, P
 #[derive(Debug)]
 pub enum ErrorKind {
     EmptyStack,
+    ValueEncoding(u64),
+    TypeMismatch { expected: Value, actual: Value },
+    NegativeNumber(i64),
     Unknown,
 }
 #[derive(Debug)]
@@ -36,27 +39,78 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-const REF_ID_MASK: usize = 0x8000_0000_0000_0000;
-const ARR_ID_MASK: usize = 0xc000_0000_0000_0000;
+#[derive(Clone, Debug)]
+pub enum Value {
+    Bool(bool),
+    Char(u8),
+    Integer(i64),
+    ObjectRef(usize),
+    ArrayRef(usize),
+    LayoutId(u64),
+}
+impl TryFrom<u64> for Value {
+    type Error = ErrorKind;
+    fn try_from(value: u64) -> std::result::Result<Self, ErrorKind> {
+        let stripped_value = value & 0x0fff_ffff_ffff_ffff;
+        let control_bits = value >> 60;
+        assert!(control_bits <= 0b1111);
+        Ok(match control_bits {
+            0b1111 | 0b0000 => Self::Integer(value as i64),
+            0b0001 => match stripped_value {
+                0 => Self::Bool(false),
+                1 => Self::Bool(true),
+                _ => return Err(ErrorKind::ValueEncoding(value)),
+            },
+            0b0010 => match stripped_value {
+                0x0..0xff => Self::Char(stripped_value as u8),
+                _ => return Err(ErrorKind::ValueEncoding(value)),
+            },
+            0b1000 => Self::ObjectRef(stripped_value as usize),
+            0b1001 => Self::ArrayRef(stripped_value as usize),
+            0b1010 => Self::LayoutId(stripped_value),
+            0b10000..=u64::MAX => unreachable!(),
+            _ => return Err(ErrorKind::ValueEncoding(value)),
+        })
+    }
+}
+impl From<Value> for u64 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Bool(b) => {
+                if b {
+                    0x1000_0000_0000_0001
+                } else {
+                    0x1000_0000_0000_0000
+                }
+            }
+            Value::Char(c) => (c as u64) ^ (0b0010 << 60),
+            Value::Integer(i) => {
+                let i = i as u64;
+                let control_bits = i >> 60;
+                assert!(control_bits == 0b0000 || control_bits == 0b1111);
+                i
+            }
+            Value::ObjectRef(idx) => {
+                assert_eq!(idx >> 60, 0);
+                (idx ^ (0b1000 << 60)) as u64
+            }
+            Value::ArrayRef(idx) => {
+                assert_eq!(idx >> 60, 0);
+                (idx ^ (0b1001 << 60)) as u64
+            }
+            Value::LayoutId(id) => {
+                assert_eq!(id >> 60, 0);
+                id ^ (0b1010 << 60)
+            }
+        }
+    }
+}
 
 struct Object {
     layout_id: LayoutId,
-    props: Vec<i64>,
+    props: Vec<u64>,
 }
 impl Object {
-    fn is_id(ref_id: i64) -> bool {
-        (ref_id as usize) >> 60 == 0b1000
-    }
-    fn id_to_index(ref_id: i64) -> usize {
-        assert_eq!(ref_id as usize >> 60, 0b1000);
-        (ref_id as usize) ^ REF_ID_MASK
-    }
-    fn index_to_id(index: usize) -> i64 {
-        let id = index ^ REF_ID_MASK;
-        assert_eq!(id >> 60, 0b1000);
-        id as i64
-    }
-
     fn _prop_idx(&self, bytecode: &ByteCode, prop_id: PropId) -> usize {
         bytecode
             .layouts
@@ -66,45 +120,31 @@ impl Object {
             .position(|&pid| pid == prop_id)
             .unwrap()
     }
-    fn get_prop(&self, bytecode: &ByteCode, prop_id: PropId) -> i64 {
+    fn get_prop(&self, bytecode: &ByteCode, prop_id: PropId) -> u64 {
         self.props[self._prop_idx(bytecode, prop_id)]
     }
-    fn get_prop_mut(&mut self, bytecode: &ByteCode, prop_id: PropId) -> &mut i64 {
+    fn get_prop_mut(&mut self, bytecode: &ByteCode, prop_id: PropId) -> &mut u64 {
         let prop_idx = self._prop_idx(bytecode, prop_id);
         &mut self.props[prop_idx]
     }
 }
 
 struct Array {
-    elements: Vec<i64>,
-}
-impl Array {
-    fn is_id(ref_id: i64) -> bool {
-        (ref_id as usize) >> 60 == 0b1100
-    }
-    fn id_to_index(arr_id: i64) -> usize {
-        assert_eq!(arr_id as usize >> 60, 0b1100);
-        (arr_id as usize) ^ ARR_ID_MASK
-    }
-    fn index_to_id(index: usize) -> i64 {
-        let id = index ^ ARR_ID_MASK;
-        assert_eq!(id >> 60, 0b1100);
-        id as i64
-    }
+    elements: Vec<u64>,
 }
 
 struct StackFrame {
     block_id: BlockId,
     pc: usize,
-    locals: Vec<i64>,
+    locals: Vec<u64>,
 }
 
 pub struct VM<'a> {
     bytecode: &'a ByteCode,
     block_id: BlockId,
     pc: usize,
-    locals: Vec<i64>,
-    stack: Vec<i64>,
+    locals: Vec<u64>,
+    stack: Vec<u64>,
     call_stack: Vec<StackFrame>,
     objects: Vec<Object>,
     arrays: Vec<Array>,
@@ -126,7 +166,7 @@ impl Iterator for VM<'_> {
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
-            OpCode::Literal => Op::Literal(self.next_word() as i64),
+            OpCode::Literal => Op::Literal(self.next_word()),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::Return => Op::Return,
             OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
@@ -219,7 +259,7 @@ impl<'a> VM<'a> {
             Op::And => self.op_and()?,
             Op::Or => self.op_or()?,
             Op::Not => self.op_not()?,
-            Op::Print => self.op_print(),
+            Op::Print => self.op_print()?,
             Op::Layout(layout_id) => self.op_layout(layout_id),
             Op::Malloc(layout_id) => self.op_malloc(layout_id)?,
             Op::EmptyArray => self.op_empty_array()?,
@@ -234,15 +274,76 @@ impl VM<'_> {
         let range = self.bytecode.source_map.get(self.block_id, self.pc - 1);
         Error { kind, range }
     }
-    pub fn pop(&mut self) -> Result<i64> {
+    pub fn pop_raw(&mut self) -> Result<u64> {
         self.stack.pop().ok_or(self.error(ErrorKind::EmptyStack))
+    }
+    fn pop(&mut self) -> Result<Value> {
+        self.stack
+            .pop()
+            .ok_or(self.error(ErrorKind::EmptyStack))
+            .and_then(|v| Value::try_from(v).map_err(|kind| self.error(kind)))
+    }
+    fn pop_bool(&mut self) -> Result<bool> {
+        match self.pop()? {
+            Value::Bool(b) => Ok(b),
+            v => Err(self.error(ErrorKind::TypeMismatch {
+                expected: Value::Bool(false),
+                actual: v,
+            })),
+        }
+    }
+    fn pop_char(&mut self) -> Result<u8> {
+        match self.pop()? {
+            Value::Char(c) => Ok(c),
+            v => Err(self.error(ErrorKind::TypeMismatch {
+                expected: Value::Char(0),
+                actual: v,
+            })),
+        }
+    }
+    fn pop_integer(&mut self) -> Result<i64> {
+        match self.pop()? {
+            Value::Integer(i) => Ok(i),
+            v => Err(self.error(ErrorKind::TypeMismatch {
+                expected: Value::Integer(0),
+                actual: v,
+            })),
+        }
+    }
+    fn pop_index(&mut self) -> Result<usize> {
+        let index = self.pop_integer()?;
+        if index < 0 {
+            return Err(self.error(ErrorKind::NegativeNumber(index)));
+        }
+        Ok(index as usize)
+    }
+    fn pop_object_ref(&mut self) -> Result<usize> {
+        match self.pop()? {
+            Value::ObjectRef(idx) => Ok(idx),
+            v => Err(self.error(ErrorKind::TypeMismatch {
+                expected: Value::ObjectRef(0),
+                actual: v,
+            })),
+        }
+    }
+    fn pop_array_ref(&mut self) -> Result<usize> {
+        match self.pop()? {
+            Value::ArrayRef(idx) => Ok(idx),
+            v => Err(self.error(ErrorKind::TypeMismatch {
+                expected: Value::ArrayRef(0),
+                actual: v,
+            })),
+        }
+    }
+    fn push(&mut self, value: Value) {
+        self.stack.push(u64::from(value));
     }
     pub fn stack_len(&self) -> usize {
         self.stack.len()
     }
 }
 impl VM<'_> {
-    fn op_literal(&mut self, literal: i64) {
+    fn op_literal(&mut self, literal: u64) {
         self.stack.push(literal);
     }
     fn op_call(&mut self, def_id: DefId) {
@@ -276,8 +377,8 @@ impl VM<'_> {
         self.pc = 0;
     }
     fn op_go_to_if(&mut self, block_id: BlockId) -> Result<()> {
-        let value = self.pop()?;
-        if value == 1 {
+        let value = self.pop_bool()?;
+        if value {
             self.block_id = block_id;
             self.pc = 0;
         }
@@ -290,8 +391,8 @@ impl VM<'_> {
     fn op_swap(&mut self) -> Result<()> {
         let b = self.pop()?;
         let a = self.pop()?;
-        self.stack.push(b);
-        self.stack.push(a);
+        self.push(b);
+        self.push(a);
         Ok(())
     }
     fn op_pop(&mut self) -> Result<()> {
@@ -300,7 +401,7 @@ impl VM<'_> {
     }
     fn op_bind_local(&mut self, local_id: LocalId) -> Result<()> {
         let value = self.pop()?;
-        self.locals[local_id.to_index()] = value;
+        self.locals[local_id.to_index()] = u64::from(value);
         Ok(())
     }
     fn op_push_local(&mut self, local_id: LocalId) {
@@ -308,163 +409,178 @@ impl VM<'_> {
         self.stack.push(value);
     }
     fn op_bind_prop(&mut self, prop_id: PropId) -> Result<()> {
-        let ref_id = Object::id_to_index(self.pop()?);
+        let ref_id = self.pop_object_ref()?;
         let value = self.pop()?;
         let obj = &mut self.objects[ref_id];
-        *obj.get_prop_mut(self.bytecode, prop_id) = value;
+        *obj.get_prop_mut(self.bytecode, prop_id) = u64::from(value);
         Ok(())
     }
     fn op_push_prop(&mut self, prop_id: PropId) -> Result<()> {
-        let ref_id = Object::id_to_index(self.pop()?);
+        let ref_id = self.pop_object_ref()?;
         let obj = &self.objects[ref_id];
         let prop = obj.get_prop(self.bytecode, prop_id);
         self.stack.push(prop);
         Ok(())
     }
     fn op_add(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push(a + b);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Integer(a + b));
         Ok(())
     }
     fn op_sub(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push(a - b);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Integer(a - b));
         Ok(())
     }
     fn op_mul(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push(a * b);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Integer(a * b));
         Ok(())
     }
     fn op_div(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push(a / b);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Integer(a / b));
         Ok(())
     }
     fn op_eq(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push((a == b) as i64);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Bool(a == b));
         Ok(())
     }
     fn op_ne(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push((a != b) as i64);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Bool(a != b));
         Ok(())
     }
     fn op_gt(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push((a > b) as i64);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Bool(a > b));
         Ok(())
     }
     fn op_lt(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push((a < b) as i64);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Bool(a < b));
         Ok(())
     }
     fn op_gte(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push((a >= b) as i64);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Bool(a >= b));
         Ok(())
     }
     fn op_lte(&mut self) -> Result<()> {
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push((a <= b) as i64);
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push(Value::Bool(a <= b));
         Ok(())
     }
     fn op_and(&mut self) -> Result<()> {
-        let b = self.pop()? == 1;
-        let a = self.pop()? == 1;
-        self.stack.push((a && b) as i64);
+        let b = self.pop_bool()?;
+        let a = self.pop_bool()?;
+        self.push(Value::Bool(a && b));
         Ok(())
     }
     fn op_or(&mut self) -> Result<()> {
-        let b = self.pop()? == 1;
-        let a = self.pop()? == 1;
-        self.stack.push((a || b) as i64);
+        let b = self.pop_bool()?;
+        let a = self.pop_bool()?;
+        self.push(Value::Bool(a || b));
         Ok(())
     }
     fn op_not(&mut self) -> Result<()> {
-        let a = self.pop()? == 1;
-        self.stack.push((!a) as i64);
+        let a = self.pop_bool()?;
+        self.push(Value::Bool(!a));
         Ok(())
     }
-    fn _format_value(&self, w: &mut impl Write, value: i64) -> std::fmt::Result {
-        if Object::is_id(value) {
-            let obj = &self.objects[Object::id_to_index(value)];
-            let layout = self.bytecode.layouts.get(&obj.layout_id).expect("layout");
-            let mut layout_iter = layout.iter();
-            write!(w, "{{")?;
-            if let Some(first_prop_id) = layout_iter.next() {
-                let prop_name = self.bytecode.prop_names.get(first_prop_id).unwrap();
-                write!(w, "{prop_name}: ")?;
-                self._format_value(w, obj.get_prop(self.bytecode, *first_prop_id))?;
-                for prop_id in layout_iter {
-                    let prop_name = self.bytecode.prop_names.get(prop_id).unwrap();
-                    write!(w, ", {prop_name}: ")?;
-                    self._format_value(w, obj.get_prop(self.bytecode, *prop_id))?;
+    fn _format_value(&self, w: &mut impl Write, value: Value) -> std::fmt::Result {
+        match value {
+            Value::Bool(b) => write!(w, "{b}")?,
+            Value::Char(c) => write!(w, "{c}")?,
+            Value::Integer(i) => write!(w, "{i}")?,
+            Value::ObjectRef(obj_ref) => {
+                let obj = &self.objects[obj_ref];
+                let layout = self.bytecode.layouts.get(&obj.layout_id).expect("layout");
+                let mut layout_iter = layout.iter();
+                write!(w, "{{")?;
+                if let Some(first_prop_id) = layout_iter.next() {
+                    let prop_name = self.bytecode.prop_names.get(first_prop_id).unwrap();
+                    write!(w, "{prop_name}: ")?;
+                    self._format_value(
+                        w,
+                        Value::try_from(obj.get_prop(self.bytecode, *first_prop_id))
+                            .expect("invalid value"),
+                    )?;
+                    for prop_id in layout_iter {
+                        let prop_name = self.bytecode.prop_names.get(prop_id).unwrap();
+                        write!(w, ", {prop_name}: ")?;
+                        self._format_value(
+                            w,
+                            Value::try_from(obj.get_prop(self.bytecode, *prop_id))
+                                .expect("invalid value"),
+                        )?;
+                    }
                 }
+                write!(w, "}}")?;
             }
-            write!(w, "}}")?;
-        } else if Array::is_id(value) {
-            let array = &self.arrays[Array::id_to_index(value)];
-            let mut elements = array.elements.iter();
-            write!(w, "[")?;
-            if let Some(first) = elements.next() {
-                self._format_value(w, *first)?;
-                for element in elements {
-                    write!(w, ", ",)?;
-                    self._format_value(w, *element)?;
+            Value::ArrayRef(arr_ref) => {
+                let array = &self.arrays[arr_ref];
+                let mut elements = array.elements.iter();
+                write!(w, "[")?;
+                if let Some(first) = elements.next() {
+                    self._format_value(w, Value::try_from(*first).expect("invalid value"))?;
+                    for element in elements {
+                        write!(w, ", ",)?;
+                        self._format_value(w, Value::try_from(*element).expect("invalid value"))?;
+                    }
                 }
+                write!(w, "]")?;
             }
-            write!(w, "]")?;
-        } else {
-            write!(w, "{value}")?;
+            Value::LayoutId(id) => write!(w, "LayouId({id})")?,
         }
         Ok(())
     }
-    fn op_print(&mut self) {
-        let value = *self.stack.last().expect("value on stack");
+    fn op_print(&mut self) -> Result<()> {
+        let value = self.pop()?;
+        self.push(value.clone());
         let mut buf = String::new();
         self._format_value(&mut buf, value).unwrap();
         println!("{buf}");
+        Ok(())
     }
     fn op_layout(&mut self, layout_id: LayoutId) {
         self.stack.push(layout_id.to_value());
     }
     fn op_malloc(&mut self, layout_id: LayoutId) -> Result<()> {
         let prop_ids = self.bytecode.layouts.get(&layout_id).unwrap();
-        let ref_id = Object::index_to_id(self.objects.len());
+        let ref_id = Value::ObjectRef(self.objects.len());
         let mut props = vec![0; prop_ids.len()];
         for i in (0..prop_ids.len()).rev() {
-            props[i] = self.pop()?;
+            props[i] = u64::from(self.pop()?);
         }
         self.objects.push(Object { layout_id, props });
-        self.stack.push(ref_id);
+        self.push(ref_id);
         Ok(())
     }
     fn op_empty_array(&mut self) -> Result<()> {
-        let len = self.pop()? as usize;
+        let len = self.pop_index()?;
         let array = Array {
             elements: vec![0; len],
         };
-        let arr_id = Array::index_to_id(self.arrays.len());
+        let arr_id = Value::ArrayRef(self.arrays.len());
         self.arrays.push(array);
-        self.stack.push(arr_id);
+        self.push(arr_id);
         Ok(())
     }
     fn op_array_get(&mut self) -> Result<()> {
-        let index = self.pop()? as usize;
-        let arr_id = Array::id_to_index(self.pop()?);
+        let index = self.pop_index()?;
+        let arr_id = self.pop_array_ref()?;
         let array = &self.arrays[arr_id];
         let element = array.elements[index];
         self.stack.push(element);
@@ -472,10 +588,10 @@ impl VM<'_> {
     }
     fn op_array_set(&mut self) -> Result<()> {
         let value = self.pop()?;
-        let index = self.pop()? as usize;
-        let arr_id = Array::id_to_index(self.pop()?);
+        let index = self.pop_index()?;
+        let arr_id = self.pop_array_ref()?;
         let array = &mut self.arrays[arr_id];
-        array.elements[index] = value;
+        array.elements[index] = u64::from(value);
         Ok(())
     }
 }

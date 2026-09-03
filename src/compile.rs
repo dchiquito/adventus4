@@ -63,7 +63,7 @@ fn evaluate_at_compile_time(bytecode: &ByteCode, block_id: BlockId) -> u64 {
     let mut vm = VM::new(bytecode, def_id, block_id);
     vm.run().expect("no errors pls");
     assert_eq!(vm.stack_len(), 1);
-    vm.pop().unwrap() as u64
+    vm.pop_raw().unwrap()
 }
 
 enum Builtin {
@@ -377,7 +377,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.push(cursor, Op::Literal(int));
+        self.push(cursor, Op::Literal(int as u64));
     }
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
@@ -389,7 +389,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.push(cursor, Op::Literal(int));
+        self.push(cursor, Op::Literal(int as u64));
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");

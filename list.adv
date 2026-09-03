@@ -49,5 +49,4 @@ def main [
   $list print 123 push
   $list print 123 push
   $list print 123 push
-  pop pop pop
 ]
