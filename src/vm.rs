@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpCode, PropId};
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ErrorKind {
     EmptyStack,
     ValueEncoding(u64),
@@ -39,7 +39,7 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Value {
     Bool(bool),
     Char(u8),
@@ -56,12 +56,12 @@ impl TryFrom<u64> for Value {
         assert!(control_bits <= 0b1111);
         Ok(match control_bits {
             0b1111 | 0b0000 => Self::Integer(value as i64),
-            0b0001 => match stripped_value {
+            0b0100 => match stripped_value {
                 0 => Self::Bool(false),
                 1 => Self::Bool(true),
                 _ => return Err(ErrorKind::ValueEncoding(value)),
             },
-            0b0010 => match stripped_value {
+            0b0101 => match stripped_value {
                 0x0..0xff => Self::Char(stripped_value as u8),
                 _ => return Err(ErrorKind::ValueEncoding(value)),
             },
@@ -78,12 +78,12 @@ impl From<Value> for u64 {
         match value {
             Value::Bool(b) => {
                 if b {
-                    0x1000_0000_0000_0001
+                    0x4000_0000_0000_0001
                 } else {
-                    0x1000_0000_0000_0000
+                    0x4000_0000_0000_0000
                 }
             }
-            Value::Char(c) => (c as u64) ^ (0b0010 << 60),
+            Value::Char(c) => (c as u64) ^ (0b0101 << 60),
             Value::Integer(i) => {
                 let i = i as u64;
                 let control_bits = i >> 60;
@@ -593,5 +593,84 @@ impl VM<'_> {
         let array = &mut self.arrays[arr_id];
         array.elements[index] = u64::from(value);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_value_encoding() {
+        for high_bits in 0_u64..255_u64 {
+            for low_bits in 0_u64..1023_u64 {
+                let encoded = (high_bits << 56) + low_bits;
+                if let Ok(value) = Value::try_from(encoded) {
+                    assert_eq!(encoded, u64::from(value));
+                }
+            }
+        }
+    }
+    macro_rules! assert_encoding_of {
+        ($value:expr) => {
+            assert_eq!(Ok($value), Value::try_from(u64::from($value)));
+        };
+    }
+    #[test]
+    fn test_value_decode_bool() {
+        assert_encoding_of!(Value::Bool(true));
+        assert_encoding_of!(Value::Bool(false));
+    }
+    #[test]
+    fn test_value_decode_char() {
+        for c in 0..255 {
+            assert_encoding_of!(Value::Char(c));
+        }
+    }
+    #[test]
+    fn test_value_decode_int() {
+        for i in -1024..1024 {
+            assert_encoding_of!(Value::Integer(i));
+            // Integers are conveniently encoded as themselves
+            assert_eq!(i as u64, u64::from(Value::Integer(i)));
+        }
+    }
+    #[test]
+    fn test_value_decode_int_max() {
+        let max_int = 0x0fff_ffff_ffff_ffff;
+        assert_encoding_of!(Value::Integer(max_int));
+        assert_eq!(max_int as u64, u64::from(Value::Integer(max_int)));
+        assert_eq!(
+            Err(ErrorKind::ValueEncoding((max_int + 1) as u64)),
+            Value::try_from((max_int + 1) as u64)
+        );
+    }
+    #[test]
+    fn test_value_decode_int_min() {
+        let min_int = 0xf000_0000_0000_0000_u64 as i64;
+        assert_encoding_of!(Value::Integer(min_int));
+        assert_eq!(min_int as u64, u64::from(Value::Integer(min_int)));
+        assert_eq!(
+            Err(ErrorKind::ValueEncoding((min_int - 1) as u64)),
+            Value::try_from((min_int - 1) as u64)
+        );
+    }
+    #[test]
+    fn test_value_decode_object_ref() {
+        for i in 0..1024 {
+            assert_encoding_of!(Value::ObjectRef(i));
+        }
+    }
+    #[test]
+    fn test_value_decode_array_ref() {
+        for i in 0..1024 {
+            assert_encoding_of!(Value::ArrayRef(i));
+        }
+    }
+    #[test]
+    fn test_value_decode_layout_id() {
+        for i in 0..1024 {
+            assert_encoding_of!(Value::LayoutId(i));
+        }
     }
 }
