@@ -329,6 +329,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         match cursor.node().grammar_id() {
             IDENTIFIER => self.compile_identifier(cursor),
             INT => self.compile_int(cursor),
+            CHARACTER => self.compile_character(cursor),
             GROUPING => self.compile_grouping(cursor),
             OBJECT => self.compile_object(cursor),
             BUILTIN => self.compile_builtin(cursor),
@@ -396,7 +397,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 self.def_compiler.compile_closure(cursor, closure_block_id);
                 // Encode the def_ids of the closures as literals on the stack.
                 // The VM will retrieve them when the def is called.
-                self.push(cursor, Op::Literal(closure_def_id.to_value()));
+                self.push(cursor, Op::Integer(closure_def_id.to_value()));
                 goto_first_child!(cursor);
             }
             self.push(cursor, Op::Call(def_id));
@@ -419,6 +420,27 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         }
         goto_parent!(cursor);
     }
+    fn compile_character(&mut self, cursor: &mut TreeCursor) {
+        eprintln!("{:?}", cursor.node());
+        let bytes = self.def_compiler.compiler.source.as_bytes();
+        let full_range = cursor.node().byte_range();
+        let start = full_range.start;
+        let c = if full_range.len() == 3 {
+            bytes[start + 1]
+        } else if full_range.len() == 4 {
+            assert_eq!(bytes[start + 1], b'\\');
+
+            match bytes[start + 2] {
+                b'n' => b'\n',
+                b't' => b'\t',
+                b'\\' => b'\\',
+                _ => unreachable!(),
+            }
+        } else {
+            unreachable!()
+        };
+        self.push(cursor, Op::Character(c));
+    }
     fn compile_negative_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, NEGATIVE_INT, "negative_int");
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()][1..];
@@ -429,7 +451,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.push(cursor, Op::Literal(int as u64));
+        self.push(cursor, Op::Integer(int as u64));
     }
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
@@ -441,7 +463,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             .filter(|&&b| b != b'_')
             .map(|b| (b - b'0') as i64)
             .fold(0_i64, |lhs, rhs| lhs * 10 + rhs);
-        self.push(cursor, Op::Literal(int as u64));
+        self.push(cursor, Op::Integer(int as u64));
     }
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");

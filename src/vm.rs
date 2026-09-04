@@ -171,7 +171,8 @@ impl Iterator for VM<'_> {
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
-            OpCode::Literal => Op::Literal(self.next_word()),
+            OpCode::Integer => Op::Integer(self.next_word()),
+            OpCode::Character => Op::Character(self.next_word() as u8),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
             OpCode::Return => Op::Return,
@@ -245,7 +246,8 @@ impl<'a> VM<'a> {
     fn step(&mut self, op: &Op) -> Result<()> {
         // eprintln!("EXEC {op:?}");
         match *op {
-            Op::Literal(literal) => self.op_literal(literal),
+            Op::Integer(i) => self.op_integer(i),
+            Op::Character(c) => self.op_character(c),
             Op::Call(def_id) => self.op_call(def_id)?,
             Op::CallClosure(closure_id) => self.op_call_closure(closure_id),
             Op::Return => self.op_return(),
@@ -359,8 +361,11 @@ impl VM<'_> {
     }
 }
 impl VM<'_> {
-    fn op_literal(&mut self, literal: u64) {
-        self.stack.push(literal);
+    fn op_integer(&mut self, i: u64) {
+        self.push(Value::Integer(i as i64));
+    }
+    fn op_character(&mut self, c: u8) {
+        self.push(Value::Char(c));
     }
     fn op_call(&mut self, def_id: DefId) -> Result<()> {
         let def = self.bytecode.get_def(def_id);
@@ -551,7 +556,7 @@ impl VM<'_> {
     fn _format_value(&self, w: &mut impl Write, value: Value) -> std::fmt::Result {
         match value {
             Value::Bool(b) => write!(w, "{b}")?,
-            Value::Char(c) => write!(w, "{c}")?,
+            Value::Char(c) => write!(w, "{}", c as char)?,
             Value::Integer(i) => write!(w, "{i}")?,
             Value::ObjectRef(obj_ref) => {
                 let obj = &self.objects[obj_ref];

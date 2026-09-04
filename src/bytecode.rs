@@ -4,7 +4,8 @@ use crate::type_check::StackMutation;
 
 #[derive(Copy, Clone, Debug)]
 pub enum OpCode {
-    Literal,
+    Integer,
+    Character,
     Call,
     CallClosure,
     Return,
@@ -60,13 +61,14 @@ macro_rules! opcode_u64_conversions {
     };
 }
 opcode_u64_conversions!(
-    0x1 => Literal,
-    0x2 => Call,
-    0x3 => CallClosure,
-    0x4 => Return,
-    0x5 => ReturnClosure,
-    0x6 => GoTo,
-    0x7 => GoToIf,
+    0x1 => Integer,
+    0x2 => Character,
+    0x3 => Call,
+    0x4 => CallClosure,
+    0x5 => Return,
+    0x6 => ReturnClosure,
+    0x7 => GoTo,
+    0x8 => GoToIf,
     0x10 => Dup,
     0x11 => Swap,
     0x12 => Pop,
@@ -160,7 +162,8 @@ impl ClosureId {
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
-    Literal(u64),
+    Integer(u64),
+    Character(u8),
     Call(DefId),
     CallClosure(ClosureId),
     Return,
@@ -197,7 +200,8 @@ pub enum Op {
 impl From<Op> for OpCode {
     fn from(op: Op) -> Self {
         match op {
-            Op::Literal(_) => OpCode::Literal,
+            Op::Integer(_) => OpCode::Integer,
+            Op::Character(_) => OpCode::Character,
             Op::Call(_) => OpCode::Call,
             Op::CallClosure(_) => OpCode::CallClosure,
             Op::Return => OpCode::Return,
@@ -246,7 +250,8 @@ impl Block {
     pub fn push(&mut self, op: Op) -> OpSize {
         self.data.push(u64::from(OpCode::from(op)));
         if let Some(word) = match op {
-            Op::Literal(literal) => Some(literal as u64),
+            Op::Integer(literal) => Some(literal as u64),
+            Op::Character(c) => Some(c as u64),
             Op::Call(def_id) => Some(def_id.0),
             Op::CallClosure(def_id) => Some(def_id.0),
             Op::GoTo(block_id) => Some(block_id.0),
@@ -294,7 +299,8 @@ impl Iterator for BlockIterator<'_> {
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
-            OpCode::Literal => Op::Literal(self.next_word()),
+            OpCode::Integer => Op::Integer(self.next_word()),
+            OpCode::Character => Op::Character(self.next_word() as u8),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
             OpCode::Return => Op::Return,

@@ -1,9 +1,3 @@
 def main [
-  3 empty_array
-  dup 0 1 array_set
-  dup 1 2 array_set
-  dup 2 3 array_set
-  dup 3 4 array_set
-  1 array_get
-  print
+  'x' print
 ]

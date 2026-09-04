@@ -326,7 +326,8 @@ impl<'a, 'b> DefInferer<'a, 'b> {
     }
     fn infer_op(&mut self, op: Op) -> StackMutation {
         match op {
-            Op::Literal(_) => stack_mutation!(=>Int),
+            Op::Integer(_) => stack_mutation!(=>Int),
+            Op::Character(_) => stack_mutation!(=>Char),
             Op::Call(def_id) => self.types.type_of_def(def_id).clone(),
             Op::CallClosure(_closure_id) => stack_mutation!(=>), // TODO
             Op::Return => stack_mutation!(=>),

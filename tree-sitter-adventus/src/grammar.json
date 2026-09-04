@@ -127,6 +127,10 @@
         }
       ]
     },
+    "character": {
+      "type": "PATTERN",
+      "value": "'(\\\\[nt\\\\]|[^\\n\\t\\\\])'"
+    },
     "grouping": {
       "type": "SEQ",
       "members": [
@@ -412,6 +416,10 @@
         {
           "type": "SYMBOL",
           "name": "int"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "character"
         },
         {
           "type": "SYMBOL",

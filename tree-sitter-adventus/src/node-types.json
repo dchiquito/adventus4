@@ -175,6 +175,10 @@
           "named": true
         },
         {
+          "type": "character",
+          "named": true
+        },
+        {
           "type": "closure_var",
           "named": true
         },
@@ -565,6 +569,10 @@
   },
   {
     "type": "builtin_type_type",
+    "named": true
+  },
+  {
+    "type": "character",
     "named": true
   },
   {

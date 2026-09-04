@@ -42,6 +42,8 @@ export default grammar({
       $.negative_int,
     ),
 
+    character: $ => /'(\\[nt\\]|[^\n\t\\])'/,
+
     grouping: $ => seq(
       $.symbol_lbracket,
       repeat($.expression),
@@ -111,6 +113,7 @@ export default grammar({
 
     expression: $ => choice(
       $.int,
+      $.character,
       $.grouping,
       $.object,
       $.builtin,
