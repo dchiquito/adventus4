@@ -35,12 +35,12 @@ def range_loop [
 ]
 
 def do_bar @b [
-  111 >$i
+  222 >$i
   @b
 ]
 
 def do_foo [
-  0 >$i
+  111 >$i
   do_bar [$i print pop]
 ]
 

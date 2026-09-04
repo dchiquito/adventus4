@@ -142,6 +142,7 @@ struct StackFrame {
     pc: usize,
     locals: Vec<u64>,
     closures: Vec<DefId>,
+    frame_with_locals: Option<usize>,
     closure_stack: Vec<ClosureFrame>,
 }
 
@@ -219,6 +220,7 @@ impl<'a> VM<'a> {
             pc: 0,
             locals: bytecode.get_def(def_id).initialize_locals(),
             closures: vec![],
+            frame_with_locals: None,
             closure_stack: vec![],
         };
         let stack = vec![];
@@ -373,6 +375,7 @@ impl VM<'_> {
             pc: 0,
             locals: def.initialize_locals(),
             closures,
+            frame_with_locals: None,
             closure_stack: vec![],
         };
         std::mem::swap(&mut self.frame, &mut frame);
@@ -389,6 +392,7 @@ impl VM<'_> {
         self.frame.block_id = def.block_id;
         self.frame.pc = 0;
         self.frame.closure_stack.push(closure_frame);
+        self.frame.frame_with_locals = Some(self.call_stack.len() - 1);
     }
     fn op_return(&mut self) {
         if let Some(frame) = self.call_stack.pop() {
@@ -405,6 +409,7 @@ impl VM<'_> {
             .expect("must be in a closure");
         self.frame.block_id = closure_frame.block_id;
         self.frame.pc = closure_frame.pc;
+        self.frame.frame_with_locals = None;
     }
     fn op_go_to(&mut self, block_id: BlockId) {
         self.frame.block_id = block_id;
@@ -435,11 +440,21 @@ impl VM<'_> {
     }
     fn op_bind_local(&mut self, local_id: LocalId) -> Result<()> {
         let value = self.pop()?;
-        self.frame.locals[local_id.to_index()] = u64::from(value);
+        let locals = if let Some(idx) = self.frame.frame_with_locals {
+            &mut self.call_stack[idx].locals
+        } else {
+            &mut self.frame.locals
+        };
+        locals[local_id.to_index()] = u64::from(value);
         Ok(())
     }
     fn op_push_local(&mut self, local_id: LocalId) {
-        let value = self.frame.locals[local_id.to_index()];
+        let locals = if let Some(idx) = self.frame.frame_with_locals {
+            &self.call_stack[idx].locals
+        } else {
+            &self.frame.locals
+        };
+        let value = locals[local_id.to_index()];
         self.stack.push(value);
     }
     fn op_bind_prop(&mut self, prop_id: PropId) -> Result<()> {
