@@ -7,7 +7,7 @@ use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
-    bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpSize, PropId},
+    bytecode::{BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpSize, PropId},
     type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
 };
@@ -164,9 +164,22 @@ impl<'s> Compiler<'s> {
         goto_next_sibling!(cursor);
         let name = &self.source[cursor.node().byte_range()];
         goto_next_sibling!(cursor);
+        eprintln!("\nCompiling def {name}");
+
+        let mut closure_vars = vec![];
+        while cursor.node().grammar_id() == CLOSURE_VAR {
+            assert_node_id!(cursor, CLOSURE_VAR, "closure_var");
+            goto_first_child!(cursor);
+            goto_next_sibling!(cursor); // @
+            let var_name = &self.source[cursor.node().byte_range()];
+            let var_id = self.prop_id_for(var_name);
+            closure_vars.push(var_id);
+            goto_parent!(cursor);
+            goto_next_sibling!(cursor);
+        }
 
         let block_id = self.bytecode.new_block();
-        let def_id = self.bytecode.new_def(block_id);
+        let def_id = self.bytecode.new_def(block_id, closure_vars.len());
         // Register the name of the definition now so that it can be referenced
         // recursively while compiling itself.
         self.def_map.insert(name.to_string(), def_id);
@@ -187,7 +200,7 @@ impl<'s> Compiler<'s> {
         }
 
         {
-            let mut def_compiler = DefCompiler::new(self, def_id);
+            let mut def_compiler = DefCompiler::new(self, def_id, closure_vars);
             def_compiler.compile_def(cursor, block_id);
         }
     }
@@ -217,7 +230,7 @@ impl<'s> Compiler<'s> {
             EXPRESSION => {
                 let block_id = self.bytecode.new_block();
                 let dummy_def_id = DefId::new(0);
-                let mut def_compiler = DefCompiler::new(self, dummy_def_id);
+                let mut def_compiler = DefCompiler::new(self, dummy_def_id, vec![]);
                 let mut block_compiler = BlockCompiler::new(&mut def_compiler, block_id);
                 block_compiler.compile_expression(cursor);
                 eprintln!("bytecode {:?}", self.bytecode);
@@ -251,25 +264,39 @@ impl<'s> Compiler<'s> {
 struct DefCompiler<'a, 's> {
     compiler: &'a mut Compiler<'s>,
     def_id: DefId,
+    macro_vars: Vec<PropId>,
     local_map: HashMap<String, usize>,
     loop_stack: Vec<BlockId>,
 }
 impl<'a, 's> DefCompiler<'a, 's> {
-    fn new(compiler: &'a mut Compiler<'s>, def_id: DefId) -> Self {
+    fn new(compiler: &'a mut Compiler<'s>, def_id: DefId, macro_vars: Vec<PropId>) -> Self {
         let local_map = HashMap::default();
         let loop_stack = vec![];
         Self {
             compiler,
             def_id,
+            macro_vars,
             local_map,
             loop_stack,
         }
     }
-    fn compile_def(&'a mut self, cursor: &mut TreeCursor, block_id: BlockId) {
+    fn compile_def(&mut self, cursor: &mut TreeCursor, block_id: BlockId) {
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
         goto_parent!(cursor);
         block_compiler.push(cursor, Op::Return);
+    }
+    fn compile_closure(&mut self, cursor: &mut TreeCursor, block_id: BlockId) {
+        let mut block_compiler = BlockCompiler::new(self, block_id);
+        block_compiler.compile_expression(cursor);
+        block_compiler.push(cursor, Op::ReturnClosure);
+    }
+    fn closure_id(&self, macro_var: PropId) -> Result<ClosureId, ()> {
+        self.macro_vars
+            .iter()
+            .position(|&mv| mv == macro_var)
+            .map(ClosureId::from_index)
+            .ok_or(())
     }
 }
 struct BlockCompiler<'d, 'c, 's> {
@@ -309,6 +336,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             LOCAL_VAR => self.compile_local_var(cursor),
             PROP_BIND => self.compile_prop_bind(cursor),
             PROP_VAR => self.compile_prop_var(cursor),
+            CLOSURE_VAR => self.compile_closure_var(cursor),
             IF => self.compile_if(cursor),
             LOOP => self.compile_loop(cursor),
             _ => unreachable!(
@@ -347,6 +375,30 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             self.push(cursor, op);
         } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
             eprintln!("Looked up {def_id:?}");
+            let macro_vars_size = self
+                .def_compiler
+                .compiler
+                .bytecode
+                .get_def(def_id)
+                .closure_count;
+            for _ in 0..macro_vars_size {
+                // Return to parent expression
+                goto_parent!(cursor);
+                // Advance to the next token, hopefully an expression
+                goto_next_sibling!(cursor);
+                let closure_block_id = self.def_compiler.compiler.bytecode.new_block();
+                let closure_def_id = self
+                    .def_compiler
+                    .compiler
+                    .bytecode
+                    .new_def(closure_block_id, 0);
+                // Call compile_def in the existing def context
+                self.def_compiler.compile_closure(cursor, closure_block_id);
+                // Encode the def_ids of the closures as literals on the stack.
+                // The VM will retrieve them when the def is called.
+                self.push(cursor, Op::Literal(closure_def_id.to_value()));
+                goto_first_child!(cursor);
+            }
             self.push(cursor, Op::Call(def_id));
         } else {
             panic!("{string_repr} is undefined");
@@ -467,7 +519,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 .compiler
                 .bytecode
                 .get_def_mut(self.def_compiler.def_id)
-                .get_local_size();
+                .get_local_count();
             self.def_compiler
                 .local_map
                 .insert(local_name.to_string(), id);
@@ -475,7 +527,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 .compiler
                 .bytecode
                 .get_def_mut(self.def_compiler.def_id)
-                .incr_local_size();
+                .incr_local_count();
             id
         };
         let local_id = LocalId::new(local_id as u64);
@@ -517,6 +569,20 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         eprintln!("  ov {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
         self.push(cursor, Op::PushProp(prop_id));
+        goto_parent!(cursor);
+    }
+    fn compile_closure_var(&mut self, cursor: &mut TreeCursor) {
+        assert_node_id!(cursor, CLOSURE_VAR, "closure_var");
+        goto_first_child!(cursor);
+        goto_next_sibling!(cursor);
+        let closure_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
+        eprintln!("  mv {:?}", closure_name);
+        let var_id = self.def_compiler.compiler.prop_id_for(closure_name);
+        let closure_id = self
+            .def_compiler
+            .closure_id(var_id)
+            .expect("closure var exists");
+        self.push(cursor, Op::CallClosure(closure_id));
         goto_parent!(cursor);
     }
     fn compile_if(&mut self, cursor: &mut TreeCursor) {

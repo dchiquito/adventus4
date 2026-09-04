@@ -293,6 +293,14 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                     }
                     break;
                 }
+                Op::ReturnClosure => {
+                    if let Some(existing) = &self.inferred_type {
+                        self.inferred_type = Some(self.current_type.reconcile(existing));
+                    } else {
+                        self.inferred_type = Some(self.current_type.clone());
+                    }
+                    break;
+                }
                 Op::GoTo(block_id) => {
                     if let Some(previous_type) = self.blocks.get(&block_id) {
                         self.current_type = self.current_type.reconcile(previous_type);
@@ -320,7 +328,9 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         match op {
             Op::Literal(_) => stack_mutation!(=>Int),
             Op::Call(def_id) => self.types.type_of_def(def_id).clone(),
+            Op::CallClosure(_closure_id) => stack_mutation!(=>), // TODO
             Op::Return => stack_mutation!(=>),
+            Op::ReturnClosure => stack_mutation!(=>), // TODO
             Op::GoTo(_) => stack_mutation!(=>),
             Op::GoToIf(_) => stack_mutation!(Bool=>),
             Op::Dup => stack_mutation!(Unknown=>Unknown Unknown),

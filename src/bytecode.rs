@@ -6,7 +6,9 @@ use crate::type_check::StackMutation;
 pub enum OpCode {
     Literal,
     Call,
+    CallClosure,
     Return,
+    ReturnClosure,
     GoTo,
     GoToIf,
     Dup,
@@ -60,9 +62,11 @@ macro_rules! opcode_u64_conversions {
 opcode_u64_conversions!(
     0x1 => Literal,
     0x2 => Call,
-    0x3 => Return,
-    0x4 => GoTo,
-    0x5 => GoToIf,
+    0x3 => CallClosure,
+    0x4 => Return,
+    0x5 => ReturnClosure,
+    0x6 => GoTo,
+    0x7 => GoToIf,
     0x10 => Dup,
     0x11 => Swap,
     0x12 => Pop,
@@ -135,13 +139,32 @@ impl DefId {
     pub fn new(def_id: u64) -> Self {
         Self(def_id)
     }
+    pub fn to_value(&self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ClosureId(u64);
+impl ClosureId {
+    pub fn new(def_id: u64) -> Self {
+        Self(def_id)
+    }
+    pub fn from_index(index: usize) -> Self {
+        Self(index as u64)
+    }
+    pub fn to_index(&self) -> usize {
+        self.0 as usize
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
     Literal(u64),
     Call(DefId),
+    CallClosure(ClosureId),
     Return,
+    ReturnClosure,
     GoTo(BlockId),
     GoToIf(BlockId),
     Dup,
@@ -176,7 +199,9 @@ impl From<Op> for OpCode {
         match op {
             Op::Literal(_) => OpCode::Literal,
             Op::Call(_) => OpCode::Call,
+            Op::CallClosure(_) => OpCode::CallClosure,
             Op::Return => OpCode::Return,
+            Op::ReturnClosure => OpCode::ReturnClosure,
             Op::GoTo(_) => OpCode::GoTo,
             Op::GoToIf(_) => OpCode::GoToIf,
             Op::Dup => OpCode::Dup,
@@ -223,6 +248,7 @@ impl Block {
         if let Some(word) = match op {
             Op::Literal(literal) => Some(literal as u64),
             Op::Call(def_id) => Some(def_id.0),
+            Op::CallClosure(def_id) => Some(def_id.0),
             Op::GoTo(block_id) => Some(block_id.0),
             Op::GoToIf(block_id) => Some(block_id.0),
             Op::BindLocal(local_id) => Some(local_id.0),
@@ -270,7 +296,9 @@ impl Iterator for BlockIterator<'_> {
         let op = match opcode {
             OpCode::Literal => Op::Literal(self.next_word()),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
+            OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
             OpCode::Return => Op::Return,
+            OpCode::ReturnClosure => Op::ReturnClosure,
             OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
             OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
@@ -307,27 +335,29 @@ impl Iterator for BlockIterator<'_> {
 #[derive(Debug)]
 pub struct Definition {
     pub block_id: BlockId,
-    local_size: usize,
+    local_count: usize,
+    pub closure_count: usize,
     pub declared_type: Option<StackMutation>,
 }
 impl Definition {
-    pub fn new(block_id: BlockId) -> Self {
-        let local_size = 0;
+    pub fn new(block_id: BlockId, closure_count: usize) -> Self {
+        let local_count = 0;
         let declared_type = None;
         Self {
             block_id,
-            local_size,
+            local_count,
+            closure_count,
             declared_type,
         }
     }
     pub fn initialize_locals(&self) -> Vec<u64> {
-        vec![0; self.local_size]
+        vec![0; self.local_count]
     }
-    pub fn get_local_size(&self) -> usize {
-        self.local_size
+    pub fn get_local_count(&self) -> usize {
+        self.local_count
     }
-    pub fn incr_local_size(&mut self) {
-        self.local_size += 1;
+    pub fn incr_local_count(&mut self) {
+        self.local_count += 1;
     }
 }
 
@@ -366,9 +396,9 @@ impl ByteCode {
     pub fn get_block_mut(&mut self, block_id: BlockId) -> &mut Block {
         &mut self.blocks[block_id.0 as usize]
     }
-    pub fn new_def(&mut self, block_id: BlockId) -> DefId {
+    pub fn new_def(&mut self, block_id: BlockId, macro_vars_size: usize) -> DefId {
         let def_id = DefId::new(self.defs.len() as u64);
-        self.defs.push(Definition::new(block_id));
+        self.defs.push(Definition::new(block_id, macro_vars_size));
         def_id
     }
     pub fn get_def(&self, def_id: DefId) -> &Definition {
@@ -392,12 +422,12 @@ impl ByteCode {
             if let Some(sig) = &def.declared_type {
                 println!(
                     "Definition {i} :({sig:?}) has {:?} ({} locals)",
-                    def.block_id, def.local_size
+                    def.block_id, def.local_count
                 );
             } else {
                 println!(
                     "Definition {i} has {:?} ({} locals)",
-                    def.block_id, def.local_size
+                    def.block_id, def.local_count
                 );
             }
         }

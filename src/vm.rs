@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, OpCode, PropId};
+use crate::bytecode::{BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ErrorKind {
@@ -133,17 +133,21 @@ struct Array {
     elements: Vec<u64>,
 }
 
+struct ClosureFrame {
+    block_id: BlockId,
+    pc: usize,
+}
 struct StackFrame {
     block_id: BlockId,
     pc: usize,
     locals: Vec<u64>,
+    closures: Vec<DefId>,
+    closure_stack: Vec<ClosureFrame>,
 }
 
 pub struct VM<'a> {
     bytecode: &'a ByteCode,
-    block_id: BlockId,
-    pc: usize,
-    locals: Vec<u64>,
+    frame: StackFrame,
     stack: Vec<u64>,
     call_stack: Vec<StackFrame>,
     objects: Vec<Object>,
@@ -152,8 +156,8 @@ pub struct VM<'a> {
 
 impl VM<'_> {
     fn next_word(&mut self) -> u64 {
-        let word = self.bytecode.get_block(self.block_id).data[self.pc];
-        self.pc += 1;
+        let word = self.bytecode.get_block(self.frame.block_id).data[self.frame.pc];
+        self.frame.pc += 1;
         word
     }
 }
@@ -161,14 +165,16 @@ impl Iterator for VM<'_> {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc >= self.bytecode.get_block(self.block_id).data.len() {
+        if self.frame.pc >= self.bytecode.get_block(self.frame.block_id).data.len() {
             return None;
         }
         let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
         let op = match opcode {
             OpCode::Literal => Op::Literal(self.next_word()),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
+            OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
             OpCode::Return => Op::Return,
+            OpCode::ReturnClosure => Op::ReturnClosure,
             OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
             OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
@@ -208,17 +214,20 @@ impl<'a> VM<'a> {
         Self::new(bytecode, def_id, block_id)
     }
     pub fn new(bytecode: &'a ByteCode, def_id: DefId, block_id: BlockId) -> Self {
-        let pc = 0;
-        let locals = bytecode.get_def(def_id).initialize_locals();
+        let frame = StackFrame {
+            block_id,
+            pc: 0,
+            locals: bytecode.get_def(def_id).initialize_locals(),
+            closures: vec![],
+            closure_stack: vec![],
+        };
         let stack = vec![];
         let call_stack = vec![];
         let objects = vec![];
         let arrays = vec![];
         Self {
             bytecode,
-            block_id,
-            pc,
-            locals,
+            frame,
             stack,
             call_stack,
             objects,
@@ -235,8 +244,10 @@ impl<'a> VM<'a> {
         // eprintln!("EXEC {op:?}");
         match *op {
             Op::Literal(literal) => self.op_literal(literal),
-            Op::Call(def_id) => self.op_call(def_id),
+            Op::Call(def_id) => self.op_call(def_id)?,
+            Op::CallClosure(closure_id) => self.op_call_closure(closure_id),
             Op::Return => self.op_return(),
+            Op::ReturnClosure => self.op_return_closure(),
             Op::GoTo(block_id) => self.op_go_to(block_id),
             Op::GoToIf(block_id) => self.op_go_to_if(block_id)?,
             Op::Dup => self.op_dup(),
@@ -271,7 +282,10 @@ impl<'a> VM<'a> {
 }
 impl VM<'_> {
     fn error(&self, kind: ErrorKind) -> Error {
-        let range = self.bytecode.source_map.get(self.block_id, self.pc - 1);
+        let range = self
+            .bytecode
+            .source_map
+            .get(self.frame.block_id, self.frame.pc.saturating_sub(1));
         Error { kind, range }
     }
     pub fn pop_raw(&mut self) -> Result<u64> {
@@ -346,41 +360,61 @@ impl VM<'_> {
     fn op_literal(&mut self, literal: u64) {
         self.stack.push(literal);
     }
-    fn op_call(&mut self, def_id: DefId) {
-        let mut locals = self.bytecode.get_def(def_id).initialize_locals();
-        std::mem::swap(&mut self.locals, &mut locals);
-        let frame = StackFrame {
-            block_id: self.block_id,
-            pc: self.pc,
-            locals,
+    fn op_call(&mut self, def_id: DefId) -> Result<()> {
+        let def = self.bytecode.get_def(def_id);
+        let mut closures = vec![];
+        for _ in 0..def.closure_count {
+            // TODO encode as something better
+            let closure_def_id = DefId::new(self.pop_integer()? as u64);
+            closures.push(closure_def_id);
+        }
+        let mut frame = StackFrame {
+            block_id: def.block_id,
+            pc: 0,
+            locals: def.initialize_locals(),
+            closures,
+            closure_stack: vec![],
         };
+        std::mem::swap(&mut self.frame, &mut frame);
         self.call_stack.push(frame);
-        self.block_id = self.bytecode.get_def(def_id).block_id;
-        self.pc = 0;
+        Ok(())
+    }
+    fn op_call_closure(&mut self, closure_id: ClosureId) {
+        let def_id = self.frame.closures[closure_id.to_index()];
+        let def = self.bytecode.get_def(def_id);
+        let closure_frame = ClosureFrame {
+            block_id: self.frame.block_id,
+            pc: self.frame.pc,
+        };
+        self.frame.block_id = def.block_id;
+        self.frame.pc = 0;
+        self.frame.closure_stack.push(closure_frame);
     }
     fn op_return(&mut self) {
-        if let Some(StackFrame {
-            block_id,
-            pc,
-            locals,
-        }) = self.call_stack.pop()
-        {
-            self.block_id = block_id;
-            self.pc = pc;
-            self.locals = locals;
+        if let Some(frame) = self.call_stack.pop() {
+            self.frame = frame;
         } else {
             panic!("Done");
         }
     }
+    fn op_return_closure(&mut self) {
+        let closure_frame = self
+            .frame
+            .closure_stack
+            .pop()
+            .expect("must be in a closure");
+        self.frame.block_id = closure_frame.block_id;
+        self.frame.pc = closure_frame.pc;
+    }
     fn op_go_to(&mut self, block_id: BlockId) {
-        self.block_id = block_id;
-        self.pc = 0;
+        self.frame.block_id = block_id;
+        self.frame.pc = 0;
     }
     fn op_go_to_if(&mut self, block_id: BlockId) -> Result<()> {
         let value = self.pop_bool()?;
         if value {
-            self.block_id = block_id;
-            self.pc = 0;
+            self.frame.block_id = block_id;
+            self.frame.pc = 0;
         }
         Ok(())
     }
@@ -401,11 +435,11 @@ impl VM<'_> {
     }
     fn op_bind_local(&mut self, local_id: LocalId) -> Result<()> {
         let value = self.pop()?;
-        self.locals[local_id.to_index()] = u64::from(value);
+        self.frame.locals[local_id.to_index()] = u64::from(value);
         Ok(())
     }
     fn op_push_local(&mut self, local_id: LocalId) {
-        let value = self.locals[local_id.to_index()];
+        let value = self.frame.locals[local_id.to_index()];
         self.stack.push(value);
     }
     fn op_bind_prop(&mut self, prop_id: PropId) -> Result<()> {

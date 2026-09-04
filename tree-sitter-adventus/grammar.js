@@ -30,6 +30,7 @@ export default grammar({
     def: $ => seq(
       $.keyword_def,
       $.identifier,
+      repeat($.closure_var),
       optional(choice($.manual_signature, $.doc_signature)),
       $.expression,
     ),
@@ -94,6 +95,7 @@ export default grammar({
     local_var: $ => seq("$", $.identifier),
     prop_bind: $ => seq(">.", $.identifier),
     prop_var: $ => seq(".", $.identifier),
+    closure_var: $ => seq("@", $.identifier),
 
     if: $ => prec.left(1, seq(
       $.keyword_if, $.expression,
@@ -116,6 +118,7 @@ export default grammar({
       $.local_var,
       $.prop_bind,
       $.prop_var,
+      $.closure_var,
       $.if,
       $.loop,
       $.identifier,

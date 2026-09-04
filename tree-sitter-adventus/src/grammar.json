@@ -73,6 +73,13 @@
           "name": "identifier"
         },
         {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "closure_var"
+          }
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
@@ -331,6 +338,19 @@
         }
       ]
     },
+    "closure_var": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "@"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        }
+      ]
+    },
     "if": {
       "type": "PREC_LEFT",
       "value": 1,
@@ -420,6 +440,10 @@
         {
           "type": "SYMBOL",
           "name": "prop_var"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "closure_var"
         },
         {
           "type": "SYMBOL",

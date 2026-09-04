@@ -1,0 +1,56 @@
+#def manual_loop_stack [
+#  0
+#  loop [
+#    dup 10 >= if break
+#    print
+#    1 +
+#  ]
+#  pop
+#]
+#
+#def manual_loop_var [
+#  0 >$i
+#  loop [
+#    $i 10 >= if break
+#    $i print pop
+#    $i 1 + >$i
+#  ]
+#]
+
+def range @body [
+  >$end
+  loop [
+    dup $end >= if break
+    dup @body // Body must consume the loop variable
+    1 +
+  ]
+  pop
+]
+
+def range_loop [
+  0 10 range [
+    print
+    pop
+  ]
+]
+
+def do_bar @b [
+  111 >$i
+  @b
+]
+
+def do_foo [
+  0 >$i
+  do_bar [$i print pop]
+]
+
+def big_bug [
+  do_foo
+]
+
+def main [
+  #manual_loop_stack
+  #manual_loop_var
+  range_loop
+  big_bug
+]
