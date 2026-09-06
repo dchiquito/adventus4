@@ -1,9 +1,15 @@
-use adventus4::{compile::Compiler, type_check::Types, vm::VM};
+use adventus4::{
+    bytecode::ByteCode,
+    compile::Compiler,
+    type_check::Types,
+    vm::{VM, read_source_file},
+};
 
 fn main() {
     if let Some(in_file) = std::env::args().nth(1) {
-        let source_code = std::fs::read_to_string(in_file).unwrap();
-        let bytecode = Compiler::new(&source_code).compile();
+        let source = read_source_file(&in_file);
+        let mut bytecode = ByteCode::default();
+        Compiler::new(&mut bytecode, &in_file, &source).compile();
         eprintln!("{bytecode:?}");
         bytecode.pretty_print();
         let mut types = Types::new(&bytecode);
@@ -11,11 +17,7 @@ fn main() {
         eprintln!("{types:?}");
         let mut vm = VM::new_main(&bytecode);
         if let Err(e) = vm.run() {
-            println!(
-                "Run time error {e:?}: line {}: {}",
-                e.get_line_number(&source_code),
-                e.get_source_string(&source_code)
-            );
+            e.format(&mut std::io::stderr(), &bytecode).unwrap()
         }
     }
     // let root_node = tree.root_node();

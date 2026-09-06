@@ -1,6 +1,18 @@
-use std::fmt::Write;
+use std::{fmt::Write, ops::Range, path::PathBuf};
 
-use crate::bytecode::{BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId};
+use crate::bytecode::{
+    BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceMap,
+    SourceRef,
+};
+
+pub fn read_source_file(source_name: &str) -> String {
+    let path = PathBuf::from(source_name);
+    if path.starts_with("lib") {
+        todo!()
+    } else {
+        std::fs::read_to_string(&path).unwrap()
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ErrorKind {
@@ -13,7 +25,7 @@ pub enum ErrorKind {
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
-    range: std::ops::Range<usize>,
+    source_ref: SourceRef,
 }
 impl std::error::Error for Error {}
 impl std::fmt::Display for Error {
@@ -23,12 +35,41 @@ impl std::fmt::Display for Error {
     }
 }
 impl Error {
-    pub fn get_source_string<'a>(&self, source: &'a str) -> &'a str {
-        &source[self.range.clone()]
+    pub fn format(&self, f: &mut impl std::io::Write, bytecode: &ByteCode) -> std::io::Result<()> {
+        let SourceRef {
+            source_id: id,
+            range,
+        } = self.source_ref.clone();
+        let name = bytecode.source_map.get_source_name(id);
+        let source = read_source_file(name);
+        let line_number = self.get_line_number(&source);
+        let line_range = self.get_source_line_extents(&source);
+        let column_number = 1 + range.start - line_range.start;
+        writeln!(f, "Run time error: {:?}", self.kind)?;
+        writeln!(
+            f,
+            "- {name}:{line_number}:{column_number}: {}",
+            &source[range]
+        )?;
+        writeln!(f, "{}", &source[line_range])?;
+        Ok(())
     }
-    pub fn get_line_number(&self, source: &str) -> usize {
+    fn get_source_line_extents(&self, source: &str) -> Range<usize> {
+        let range = &self.source_ref.range;
+        let start_offset = source.as_bytes()[..range.start]
+            .iter()
+            .rev()
+            .position(|&c| c == b'\n')
+            .unwrap_or(range.start);
+        let end_offset = source.as_bytes()[range.end..]
+            .iter()
+            .position(|&c| c == b'\n')
+            .unwrap_or(source.len() - range.end);
+        (range.start - start_offset)..(range.end + end_offset)
+    }
+    fn get_line_number(&self, source: &str) -> usize {
         let mut lines = 1;
-        for i in 0..self.range.start {
+        for i in 0..self.source_ref.range.start {
             if source.as_bytes()[i] == b'\n' {
                 lines += 1;
             }
@@ -286,11 +327,11 @@ impl<'a> VM<'a> {
 }
 impl VM<'_> {
     fn error(&self, kind: ErrorKind) -> Error {
-        let range = self
+        let source_ref = self
             .bytecode
             .source_map
             .get(self.frame.block_id, self.frame.pc.saturating_sub(1));
-        Error { kind, range }
+        Error { kind, source_ref }
     }
     pub fn pop_raw(&mut self) -> Result<u64> {
         self.stack.pop().ok_or(self.error(ErrorKind::EmptyStack))

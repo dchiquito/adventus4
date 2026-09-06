@@ -367,16 +367,37 @@ impl Definition {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SourceId(usize);
+
+#[derive(Clone, Debug, Default)]
+pub struct SourceRef {
+    pub source_id: SourceId,
+    pub range: Range<usize>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct SourceMap {
-    map: HashMap<BlockId, Vec<Range<usize>>>,
+    source_names: Vec<String>,
+    map: HashMap<BlockId, Vec<SourceRef>>,
 }
 impl SourceMap {
-    pub fn push(&mut self, block_id: BlockId, range: Range<usize>) {
-        self.map.entry(block_id).or_default().push(range);
+    pub fn new_source(&mut self, source_name: &str) -> SourceId {
+        let source_id = SourceId(self.source_names.len());
+        self.source_names.push(source_name.to_string());
+        source_id
     }
-    pub fn get(&self, block_id: BlockId, index: usize) -> Range<usize> {
+    pub fn push(&mut self, source_id: SourceId, block_id: BlockId, range: Range<usize>) {
+        self.map
+            .entry(block_id)
+            .or_default()
+            .push(SourceRef { source_id, range });
+    }
+    pub fn get(&self, block_id: BlockId, index: usize) -> SourceRef {
         self.map.get(&block_id).unwrap()[index].clone()
+    }
+    pub fn get_source_name(&self, source_id: SourceId) -> &str {
+        &self.source_names[source_id.0]
     }
 }
 

@@ -7,7 +7,9 @@ use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
-    bytecode::{BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpSize, PropId},
+    bytecode::{
+        BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
+    },
     type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
 };
@@ -104,17 +106,19 @@ impl TryFrom<&str> for Builtin {
 
 pub struct Compiler<'s> {
     source: &'s str,
-    bytecode: ByteCode,
+    source_id: SourceId,
+    bytecode: &'s mut ByteCode,
     def_map: HashMap<String, DefId>,
     prop_ids: HashMap<String, PropId>,
 }
 impl<'s> Compiler<'s> {
-    pub fn new(source: &'s str) -> Self {
-        let bytecode = ByteCode::default();
+    pub fn new(bytecode: &'s mut ByteCode, source_name: &str, source: &'s str) -> Self {
+        let source_id = bytecode.source_map.new_source(source_name);
         let def_map = HashMap::default();
         let prop_ids = HashMap::default();
         Self {
             source,
+            source_id,
             bytecode,
             def_map,
             prop_ids,
@@ -141,7 +145,7 @@ impl<'s> Compiler<'s> {
         parser.parse(self.source, None).unwrap()
     }
 
-    pub fn compile(mut self) -> ByteCode {
+    pub fn compile(mut self) {
         let tree = self.parse_tree();
         let root = tree.root_node();
         eprintln!("{root:?}");
@@ -156,7 +160,6 @@ impl<'s> Compiler<'s> {
         }
         goto_parent!(cursor);
         assert_eq!(cursor.node(), root);
-        self.bytecode
     }
     fn compile_def(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, DEF, "def");
@@ -314,13 +317,17 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let bytecode = &mut self.def_compiler.compiler.bytecode;
         match bytecode.get_block_mut(self.block_id).push(op) {
             OpSize::One => {}
-            OpSize::Two => bytecode
-                .source_map
-                .push(self.block_id, cursor.node().byte_range()),
+            OpSize::Two => bytecode.source_map.push(
+                self.def_compiler.compiler.source_id,
+                self.block_id,
+                cursor.node().byte_range(),
+            ),
         }
-        bytecode
-            .source_map
-            .push(self.block_id, cursor.node().byte_range());
+        bytecode.source_map.push(
+            self.def_compiler.compiler.source_id,
+            self.block_id,
+            cursor.node().byte_range(),
+        );
     }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
