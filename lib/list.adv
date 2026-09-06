@@ -1,5 +1,5 @@
 def List {arr cap len}
-def new_list [
+def empty_list [
   [10 empty_array] 10 0
   (List) malloc
 ]
@@ -32,17 +32,4 @@ def push [
   $list _list_expand_if_full
   $list.arr $list.len $value array_set
   $list.len 1 + $list>.len
-]
-def main [
-  new_list >$list
-  0 >$i
-  loop [
-    $i 100 >= if break
-    $list print $i push
-    $i 1 + >$i
-  ]
-  0 100 range [
-    >$i
-    $list print $i push
-  ]
 ]

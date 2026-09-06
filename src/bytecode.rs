@@ -407,6 +407,8 @@ pub struct ByteCode {
     pub defs: Vec<Definition>,
     pub main_id: Option<DefId>,
     pub layouts: HashMap<LayoutId, Vec<PropId>>,
+    pub def_ids: HashMap<String, DefId>,
+    pub prop_ids: HashMap<String, PropId>,
     pub prop_names: HashMap<PropId, String>,
     pub source_map: SourceMap,
 }

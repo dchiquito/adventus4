@@ -1,4 +1,6 @@
 def main [
-  'x' print
-  pop pop
+  empty_list
+  dup 'x' push
+  print
+  pop 
 ]

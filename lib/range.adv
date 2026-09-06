@@ -1,0 +1,9 @@
+def range @body [
+  >$end
+  loop [
+    dup $end >= if break
+    dup @body // Body must consume the loop variable
+    1 +
+  ]
+  pop
+]

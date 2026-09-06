@@ -1,15 +1,15 @@
 use adventus4::{
     bytecode::ByteCode,
-    compile::Compiler,
+    compile::{compile_source, compile_stdlib},
     type_check::Types,
-    vm::{VM, read_source_file},
+    vm::VM,
 };
 
 fn main() {
     if let Some(in_file) = std::env::args().nth(1) {
-        let source = read_source_file(&in_file);
         let mut bytecode = ByteCode::default();
-        Compiler::new(&mut bytecode, &in_file, &source).compile();
+        compile_stdlib(&mut bytecode);
+        compile_source(&mut bytecode, &in_file);
         eprintln!("{bytecode:?}");
         bytecode.pretty_print();
         let mut types = Types::new(&bytecode);

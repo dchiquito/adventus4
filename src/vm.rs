@@ -1,18 +1,9 @@
-use std::{fmt::Write, ops::Range, path::PathBuf};
+use crate::source;
+use std::{fmt::Write, ops::Range};
 
 use crate::bytecode::{
-    BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceMap,
-    SourceRef,
+    BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
 };
-
-pub fn read_source_file(source_name: &str) -> String {
-    let path = PathBuf::from(source_name);
-    if path.starts_with("lib") {
-        todo!()
-    } else {
-        std::fs::read_to_string(&path).unwrap()
-    }
-}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ErrorKind {
@@ -41,7 +32,7 @@ impl Error {
             range,
         } = self.source_ref.clone();
         let name = bytecode.source_map.get_source_name(id);
-        let source = read_source_file(name);
+        let source = source::read_source_file(name);
         let line_number = self.get_line_number(&source);
         let line_range = self.get_source_line_extents(&source);
         let column_number = 1 + range.start - line_range.start;

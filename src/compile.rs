@@ -108,28 +108,24 @@ pub struct Compiler<'s> {
     source: &'s str,
     source_id: SourceId,
     bytecode: &'s mut ByteCode,
-    def_map: HashMap<String, DefId>,
-    prop_ids: HashMap<String, PropId>,
 }
 impl<'s> Compiler<'s> {
     pub fn new(bytecode: &'s mut ByteCode, source_name: &str, source: &'s str) -> Self {
         let source_id = bytecode.source_map.new_source(source_name);
-        let def_map = HashMap::default();
-        let prop_ids = HashMap::default();
         Self {
             source,
             source_id,
             bytecode,
-            def_map,
-            prop_ids,
         }
     }
     fn prop_id_for(&mut self, prop_name: &str) -> PropId {
-        if let Some(prop_id) = self.prop_ids.get(prop_name) {
+        if let Some(prop_id) = self.bytecode.prop_ids.get(prop_name) {
             *prop_id
         } else {
-            let prop_id = PropId::new(self.prop_ids.len() as u64);
-            self.prop_ids.insert(prop_name.to_string(), prop_id);
+            let prop_id = PropId::new(self.bytecode.prop_ids.len() as u64);
+            self.bytecode
+                .prop_ids
+                .insert(prop_name.to_string(), prop_id);
             self.bytecode
                 .prop_names
                 .insert(prop_id, prop_name.to_string());
@@ -185,7 +181,7 @@ impl<'s> Compiler<'s> {
         let def_id = self.bytecode.new_def(block_id, closure_vars.len());
         // Register the name of the definition now so that it can be referenced
         // recursively while compiling itself.
-        self.def_map.insert(name.to_string(), def_id);
+        self.bytecode.def_ids.insert(name.to_string(), def_id);
         if name == "main" {
             self.bytecode.main_id = Some(def_id);
         }
@@ -381,7 +377,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 Builtin::ArraySet => Op::ArraySet,
             };
             self.push(cursor, op);
-        } else if let Some(&def_id) = self.def_compiler.compiler.def_map.get(string_repr) {
+        } else if let Some(&def_id) = self.def_compiler.compiler.bytecode.def_ids.get(string_repr) {
             eprintln!("Looked up {def_id:?}");
             let macro_vars_size = self
                 .def_compiler
@@ -708,4 +704,15 @@ impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_lt, lt, Lt, LT);
     compile_builtin_method!(compile_gte, gte, Gte, GTE);
     compile_builtin_method!(compile_lte, lte, Lte, LTE);
+}
+
+pub fn compile_source(bytecode: &mut ByteCode, source_name: &str) {
+    let source = crate::source::read_source_file(source_name);
+    Compiler::new(bytecode, source_name, &source).compile();
+}
+
+pub fn compile_stdlib(bytecode: &mut ByteCode) {
+    for lib in crate::source::LIBS {
+        compile_source(bytecode, lib);
+    }
 }
