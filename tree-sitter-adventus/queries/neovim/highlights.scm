@@ -1,4 +1,5 @@
 (int) @number
+(character) @character
 
 (local_bind) @variable
 (local_var) @variable
