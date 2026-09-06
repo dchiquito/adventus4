@@ -5,5 +5,5 @@ def range @body [
     dup @body // Body must consume the loop variable
     1 +
   ]
-  pop
+  drop
 ]

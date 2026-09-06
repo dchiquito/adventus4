@@ -71,7 +71,7 @@ fn evaluate_at_compile_time(bytecode: &ByteCode, block_id: BlockId) -> u64 {
 enum Builtin {
     Dup,
     Swap,
-    Pop,
+    Drop,
     And,
     Or,
     Not,
@@ -89,7 +89,7 @@ impl TryFrom<&str> for Builtin {
         Ok(match name {
             "dup" => Builtin::Dup,
             "swap" => Builtin::Swap,
-            "pop" => Builtin::Pop,
+            "drop" => Builtin::Drop,
             "and" => Builtin::And,
             "or" => Builtin::Or,
             "not" => Builtin::Not,
@@ -359,7 +359,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             let op = match builtin {
                 Builtin::Dup => Op::Dup,
                 Builtin::Swap => Op::Swap,
-                Builtin::Pop => Op::Pop,
+                Builtin::Drop => Op::Drop,
                 Builtin::And => Op::And,
                 Builtin::Or => Op::Or,
                 Builtin::Not => Op::Not,

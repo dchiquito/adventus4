@@ -5,14 +5,14 @@
 #    print
 #    1 +
 #  ]
-#  pop
+#  drop
 #]
 #
 #def manual_loop_var [
 #  0 >$i
 #  loop [
 #    $i 10 >= if break
-#    $i print pop
+#    $i print drop
 #    $i 1 + >$i
 #  ]
 #]
@@ -24,13 +24,13 @@ def range @body [
     dup @body // Body must consume the loop variable
     1 +
   ]
-  pop
+  drop
 ]
 
 def range_loop [
   0 10 range [
     print
-    pop
+    drop
   ]
 ]
 
@@ -41,7 +41,7 @@ def do_bar @b [
 
 def do_foo [
   111 >$i
-  do_bar [$i print pop]
+  do_bar [$i print drop]
 ]
 
 def big_bug [

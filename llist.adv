@@ -8,7 +8,7 @@ def new_list [
 def ll_len :(LinkList -> Int) [
   .next
   dup -1 == if [
-    pop # foo
+    drop # foo
     1
   ] else [
     ll_len
@@ -23,7 +23,7 @@ def ll_append :(LinkList Int -> LinkList) [
     swap >.next
   ] else [
     dup.next $value ll_append
-    pop
+    drop
   ]
 ]
 

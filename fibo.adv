@@ -2,7 +2,7 @@
 def fibo: (Int->Int) [
   1 -
   dup 0 <= if [
-    pop
+    drop
     1
   ] else [
     dup fibo swap
@@ -13,7 +13,7 @@ def fibo: (Int->Int) [
 
 def loopfibo: (Int->Int) [
   dup 1 <= if [
-    pop
+    drop
     1
     return
   ]
@@ -26,14 +26,14 @@ def loopfibo: (Int->Int) [
     $c >$b
     1 -
   ]
-  pop
+  drop
   $b
 ]
 
 def main [
   15
   dup fibo
-  print pop
+  print drop
   dup loopfibo
-  print pop
+  print drop
 ]

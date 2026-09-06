@@ -336,7 +336,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::GoToIf(_) => stack_mutation!(Bool=>),
             Op::Dup => stack_mutation!(Unknown=>Unknown Unknown),
             Op::Swap => stack_mutation!(Unknown Unknown=>Unknown Unknown),
-            Op::Pop => stack_mutation!(Unknown=>),
+            Op::Drop => stack_mutation!(Unknown=>),
             Op::BindLocal(_local_id) => stack_mutation!(Unknown=>),
             Op::PushLocal(_local_id) => stack_mutation!(=>Unknown),
             Op::BindProp(_prop_id) => stack_mutation!(Unknown Unknown=>),

@@ -213,7 +213,7 @@ impl Iterator for VM<'_> {
             OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
-            OpCode::Pop => Op::Pop,
+            OpCode::Drop => Op::Drop,
             OpCode::BindLocal => Op::BindLocal(LocalId::new(self.next_word())),
             OpCode::PushLocal => Op::PushLocal(LocalId::new(self.next_word())),
             OpCode::BindProp => Op::BindProp(PropId::new(self.next_word())),
@@ -288,7 +288,7 @@ impl<'a> VM<'a> {
             Op::GoToIf(block_id) => self.op_go_to_if(block_id)?,
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap()?,
-            Op::Pop => self.op_pop()?,
+            Op::Drop => self.op_drop()?,
             Op::BindLocal(local_id) => self.op_bind_local(local_id)?,
             Op::PushLocal(local_id) => self.op_push_local(local_id),
             Op::BindProp(prop_id) => self.op_bind_prop(prop_id)?,
@@ -471,7 +471,7 @@ impl VM<'_> {
         self.push(a);
         Ok(())
     }
-    fn op_pop(&mut self) -> Result<()> {
+    fn op_drop(&mut self) -> Result<()> {
         self.pop()?;
         Ok(())
     }
