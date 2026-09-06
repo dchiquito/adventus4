@@ -592,6 +592,78 @@ impl VM<'_> {
             Value::Integer(i) => write!(w, "{i}")?,
             Value::ObjectRef(obj_ref) => {
                 let obj = &self.objects[obj_ref];
+                // Look up the layout_id for List
+                let list_layout_id = {
+                    let list_def_id = *self
+                        .bytecode
+                        .def_ids
+                        .get("List")
+                        .expect("stdlib not loaded");
+                    let list_block_id = self.bytecode.get_def(list_def_id).block_id;
+                    let list_block = self.bytecode.get_block(list_block_id);
+                    // List is a type, so the opcodes should look like:
+                    //  0: LayoutId
+                    //  1: [...the layout_id...]
+                    //  2: Return
+                    LayoutId::new(list_block.data[1])
+                };
+                // If the object is a list, print only the internal arr
+                if obj.layout_id == list_layout_id {
+                    let arr = Value::try_from(obj.props[0]).expect("invalid value");
+                    let len = Value::try_from(obj.props[2]).expect("invalid value");
+                    if let Value::ArrayRef(array_ref) = arr
+                        && let Value::Integer(len) = len
+                    {
+                        let len = len as usize;
+                        let array = &self.arrays[array_ref];
+                        // If the array contains only characters, render it as a string
+                        if array
+                            .elements
+                            .iter()
+                            .take(len)
+                            .copied()
+                            .map(Value::try_from)
+                            .all(|v| matches!(v, Ok(Value::Char(_))))
+                        {
+                            for c in array
+                                .elements
+                                .iter()
+                                .take(len)
+                                .copied()
+                                .map(Value::try_from)
+                                .map(|v| {
+                                    if let Ok(Value::Char(c)) = v {
+                                        c
+                                    } else {
+                                        unreachable!()
+                                    }
+                                })
+                            {
+                                write!(w, "{}", c as char)?
+                            }
+                        } else {
+                            let mut elements = array.elements.iter().take(len);
+                            write!(w, "[")?;
+                            if let Some(first) = elements.next() {
+                                self._format_value(
+                                    w,
+                                    Value::try_from(*first).expect("invalid value"),
+                                )?;
+                                for element in elements {
+                                    write!(w, ", ",)?;
+                                    self._format_value(
+                                        w,
+                                        Value::try_from(*element).expect("invalid value"),
+                                    )?;
+                                }
+                            }
+                            write!(w, "]")?;
+                        }
+                        return Ok(());
+                    } else {
+                        unreachable!("list prop types are incorrect")
+                    }
+                }
                 let layout = self.bytecode.layouts.get(&obj.layout_id).expect("layout");
                 let mut layout_iter = layout.iter();
                 write!(w, "{{")?;

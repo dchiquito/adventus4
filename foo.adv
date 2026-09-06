@@ -1,5 +1,8 @@
 def main [
-  "Hello, world" dup '!' push
+  "Hello, world"
+  dup '!' push
+  print
+  dup 1 push
   print
   drop 
 ]
