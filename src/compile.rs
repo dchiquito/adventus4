@@ -448,7 +448,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let string = {
             let bytes = self.def_compiler.compiler.source.as_bytes();
             let full_range = cursor.node().byte_range();
-            let range = full_range.start..full_range.end;
+            let range = full_range.start + 1..full_range.end - 1;
             let mut string = String::new();
             let mut slashed = false;
             for &b in &bytes[range] {

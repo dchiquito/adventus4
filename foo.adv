@@ -1,5 +1,5 @@
 def main [
-  "Hello, world!"
+  "Hello, world" dup '!' push
   print
   drop 
 ]
