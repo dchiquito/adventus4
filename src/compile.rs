@@ -333,6 +333,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             IDENTIFIER => self.compile_identifier(cursor),
             INT => self.compile_int(cursor),
             CHARACTER => self.compile_character(cursor),
+            STRING => self.compile_string(cursor),
             GROUPING => self.compile_grouping(cursor),
             OBJECT => self.compile_object(cursor),
             BUILTIN => self.compile_builtin(cursor),
@@ -424,7 +425,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_parent!(cursor);
     }
     fn compile_character(&mut self, cursor: &mut TreeCursor) {
-        eprintln!("{:?}", cursor.node());
         let bytes = self.def_compiler.compiler.source.as_bytes();
         let full_range = cursor.node().byte_range();
         let start = full_range.start;
@@ -443,6 +443,43 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             unreachable!()
         };
         self.push(cursor, Op::Character(c));
+    }
+    fn compile_string(&mut self, cursor: &mut TreeCursor) {
+        let string = {
+            let bytes = self.def_compiler.compiler.source.as_bytes();
+            let full_range = cursor.node().byte_range();
+            let range = full_range.start..full_range.end;
+            let mut string = String::new();
+            let mut slashed = false;
+            for &b in &bytes[range] {
+                if slashed {
+                    slashed = false;
+                    let c = match b {
+                        b'\n' => '\n',
+                        b'\t' => '\t',
+                        b'\\' => '\\',
+                        _ => unreachable!("invalid escape sequence"),
+                    };
+                    string.push(c);
+                } else {
+                    if b == b'\\' {
+                        slashed = true;
+                    } else {
+                        string.push(b as char);
+                    }
+                }
+            }
+            string
+        };
+        let def_ids = &self.def_compiler.compiler.bytecode.def_ids;
+        let empty_list_def_id = *def_ids.get("empty_list").expect("stdlib not loaded");
+        let push_def_id = *def_ids.get("push").expect("stdlib not loaded");
+        self.push(cursor, Op::Call(empty_list_def_id));
+        for &c in string.as_bytes().iter() {
+            self.push(cursor, Op::Dup);
+            self.push(cursor, Op::Character(c));
+            self.push(cursor, Op::Call(push_def_id));
+        }
     }
     fn compile_negative_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, NEGATIVE_INT, "negative_int");

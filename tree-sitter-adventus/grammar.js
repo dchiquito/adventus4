@@ -43,6 +43,7 @@ export default grammar({
     ),
 
     character: $ => /'(\\[nt\\]|[^\n\t\\])'/,
+    string: $ => /"(\\[nt\\]|[^\n\t\\])*"/,
 
     grouping: $ => seq(
       $.symbol_lbracket,
@@ -114,6 +115,7 @@ export default grammar({
     expression: $ => choice(
       $.int,
       $.character,
+      $.string,
       $.grouping,
       $.object,
       $.builtin,

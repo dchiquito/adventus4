@@ -221,6 +221,10 @@
         {
           "type": "prop_var",
           "named": true
+        },
+        {
+          "type": "string",
+          "named": true
         }
       ]
     }
@@ -637,6 +641,10 @@
   },
   {
     "type": "positive_int",
+    "named": true
+  },
+  {
+    "type": "string",
     "named": true
   },
   {

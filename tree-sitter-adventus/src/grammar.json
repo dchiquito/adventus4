@@ -131,6 +131,10 @@
       "type": "PATTERN",
       "value": "'(\\\\[nt\\\\]|[^\\n\\t\\\\])'"
     },
+    "string": {
+      "type": "PATTERN",
+      "value": "\"(\\\\[nt\\\\]|[^\\n\\t\\\\])*\""
+    },
     "grouping": {
       "type": "SEQ",
       "members": [
@@ -420,6 +424,10 @@
         {
           "type": "SYMBOL",
           "name": "character"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "string"
         },
         {
           "type": "SYMBOL",
