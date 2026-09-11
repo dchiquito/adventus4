@@ -508,6 +508,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_grouping(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, GROUPING, "grouping");
         goto_first_child!(cursor);
+        assert_node_id!(cursor, SYMBOL_LBRACKET, "symbol_lbracket");
         goto_next_sibling!(cursor);
         while cursor.node().grammar_id() == EXPRESSION {
             self.compile_expression(cursor);
@@ -515,6 +516,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             skip_comments!(cursor);
         }
         eprintln!("{:?}", cursor.node());
+        assert_node_id!(cursor, SYMBOL_RBRACKET, "symbol_rbracket");
         goto_parent!(cursor);
     }
     fn compile_object(&mut self, cursor: &mut TreeCursor) {
@@ -698,6 +700,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_malloc(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, MALLOC, "malloc");
         goto_first_child!(cursor);
+        goto_next_sibling!(cursor); // "malloc"
         let layout_id = self.resolve_type_constraint(cursor);
         let layout_id = LayoutId::new(layout_id);
         self.push(cursor, Op::Malloc(layout_id));
@@ -706,18 +709,14 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
 }
 impl BlockCompiler<'_, '_, '_> {
     fn resolve_type_constraint(&mut self, cursor: &mut TreeCursor) -> u64 {
-        assert_node_id!(cursor, TYPE_CONSTRAINT, "type_constraint");
-        goto_first_child!(cursor);
-        goto_next_sibling!(cursor);
         let block_id = self.def_compiler.compiler.bytecode.new_block();
         let mut block_compiler = BlockCompiler::new(self.def_compiler, block_id);
         block_compiler.compile_expression(cursor);
         eprintln!("bytecode {:?}", self.def_compiler.compiler.bytecode);
         eprintln!("block_id {block_id:?}");
 
-        let layout_id = evaluate_at_compile_time(&self.def_compiler.compiler.bytecode, block_id);
+        let layout_id = evaluate_at_compile_time(self.def_compiler.compiler.bytecode, block_id);
         eprintln!("layout id??? {layout_id}\n\n\n");
-        goto_parent!(cursor);
         layout_id
     }
 }

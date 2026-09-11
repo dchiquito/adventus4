@@ -237,11 +237,11 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "type_constraint"
+          "name": "keyword_malloc"
         },
         {
           "type": "SYMBOL",
-          "name": "keyword_malloc"
+          "name": "expression"
         }
       ]
     },

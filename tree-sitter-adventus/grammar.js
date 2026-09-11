@@ -77,8 +77,8 @@ export default grammar({
     gte: $ => ">=",
     lte: $ => "<=",
     malloc: $ => seq(
-      $.type_constraint,
       $.keyword_malloc,
+      $.expression,
     ),
     builtin: $ => choice(
       $.add,

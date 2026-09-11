@@ -1,7 +1,7 @@
 def List {arr cap len}
 def empty_list [
   [10 empty_array] 10 0
-  (List) malloc
+  malloc List
 ]
 def _list_double [
   >$list

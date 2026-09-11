@@ -352,11 +352,11 @@
       "required": true,
       "types": [
         {
-          "type": "keyword_malloc",
+          "type": "expression",
           "named": true
         },
         {
-          "type": "type_constraint",
+          "type": "keyword_malloc",
           "named": true
         }
       ]
@@ -487,29 +487,6 @@
         },
         {
           "type": "expression",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "type_constraint",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expression",
-          "named": true
-        },
-        {
-          "type": "symbol_lparen",
-          "named": true
-        },
-        {
-          "type": "symbol_rparen",
           "named": true
         }
       ]
