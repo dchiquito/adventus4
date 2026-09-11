@@ -461,6 +461,16 @@ impl ByteCode {
             }
         }
     }
+    pub fn get_list_layout_id(&self) -> LayoutId {
+        let list_def_id = *self.def_ids.get("List").expect("stdlib not loaded");
+        let list_block_id = self.get_def(list_def_id).block_id;
+        let list_block = self.get_block(list_block_id);
+        // List is a type, so the opcodes should look like:
+        //  0: LayoutId
+        //  1: [...the layout_id...]
+        //  2: Return
+        LayoutId::new(list_block.data[1])
+    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use crate::source;
-use std::{fmt::Write, ops::Range};
+use std::{fmt::Write, io::Read, ops::Range};
 
 use crate::bytecode::{
     BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
@@ -268,6 +268,28 @@ impl<'a> VM<'a> {
             objects,
             arrays,
         }
+    }
+    pub fn push_string(&mut self, string: &str) -> Result<()> {
+        let list_layout_id = self.bytecode.get_list_layout_id();
+        let cap = Value::Integer(string.len() as i64);
+        let len = Value::Integer(string.len() as i64);
+        // Construct a new array of the correcct length
+        let arr_id = {
+            self.push(len.clone());
+            self.op_empty_array()?;
+            self.pop_array_ref()?
+        };
+        // Fill the array
+        let arr = &mut self.arrays[arr_id];
+        for (i, &b) in string.as_bytes().iter().enumerate() {
+            arr.elements[i] = u64::from(Value::Char(b));
+        }
+        // Construct a new list
+        self.push(Value::ArrayRef(arr_id));
+        self.push(cap);
+        self.push(len);
+        self.op_malloc(list_layout_id)?;
+        Ok(())
     }
     pub fn run(&mut self) -> Result<()> {
         while let Some(op) = self.next() {
@@ -593,20 +615,7 @@ impl VM<'_> {
             Value::ObjectRef(obj_ref) => {
                 let obj = &self.objects[obj_ref];
                 // Look up the layout_id for List
-                let list_layout_id = {
-                    let list_def_id = *self
-                        .bytecode
-                        .def_ids
-                        .get("List")
-                        .expect("stdlib not loaded");
-                    let list_block_id = self.bytecode.get_def(list_def_id).block_id;
-                    let list_block = self.bytecode.get_block(list_block_id);
-                    // List is a type, so the opcodes should look like:
-                    //  0: LayoutId
-                    //  1: [...the layout_id...]
-                    //  2: Return
-                    LayoutId::new(list_block.data[1])
-                };
+                let list_layout_id = self.bytecode.get_list_layout_id();
                 // If the object is a list, print only the internal arr
                 if obj.layout_id == list_layout_id {
                     let arr = Value::try_from(obj.props[0]).expect("invalid value");
