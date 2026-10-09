@@ -155,8 +155,7 @@ impl<'b> Types<'b> {
         // At this point, we can be sure that any def dependency loops can be broken by using
         // the declared type of the def.
         for def_id in self.bytecode.iter_def_ids() {
-            let def = self.bytecode.get_def(def_id);
-            let t = self.infer_def(def);
+            let t = self.infer_def(def_id);
             eprintln!("{def_id:?} has type {t:?}!!!\n");
         }
     }
@@ -241,14 +240,14 @@ impl<'b> Types<'b> {
                 .declared_type
                 .clone()
                 // Third, compute the type
-                .unwrap_or_else(|| self.infer_def(self.bytecode.get_def(def_id)));
+                .unwrap_or_else(|| self.infer_def(def_id));
             // Save the declared or computed type for next time.
             self.def_types.insert(def_id, t);
             self.def_types.get(&def_id).unwrap()
         }
     }
-    fn infer_def(&mut self, def: &Definition) -> StackMutation {
-        DefInferer::new(self).infer_def(def)
+    fn infer_def(&mut self, def_id: DefId) -> StackMutation {
+        DefInferer::new(self).infer_def(def_id)
     }
 }
 
@@ -270,7 +269,8 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             inferred_type,
         }
     }
-    fn infer_def(mut self, def: &Definition) -> StackMutation {
+    fn infer_def(mut self, def_id: DefId) -> StackMutation {
+        let def = self.types.bytecode.get_def(def_id);
         eprintln!("Inferring def {def:?}");
         self.walk_block(def.block_id);
         self.inferred_type.expect("no return statements")
@@ -373,6 +373,8 @@ impl<'a, 'b> DefInferer<'a, 'b> {
 
 #[cfg(test)]
 mod test {
+    use crate::compile::compile_test;
+
     use super::*;
 
     #[test]
@@ -398,5 +400,28 @@ mod test {
         test_stack_mutation!((=>Int) + (=>) == (=>Int));
         test_stack_mutation!((=>) + (Int=>) == (Int=>));
         test_stack_mutation!((=>Char) + (Int Char=>) == (Int=>));
+    }
+
+    macro_rules! infer_defs {
+        ($source:expr) => {{
+            let bytecode = compile_test($source);
+            let mut types = Types::new(&bytecode);
+            bytecode
+                .iter_def_ids()
+                .map(move |def_id| {
+                    let def_inferer = DefInferer::new(&mut types);
+                    def_inferer.infer_def(def_id)
+                })
+                .collect::<Vec<StackMutation>>()
+        }};
+    }
+
+    #[test]
+    fn test_simple_type_inference() {
+        assert_eq!(infer_defs!("def three [1 2 +]"), [stack_mutation!(=> Int)]);
+        assert_eq!(
+            infer_defs!("def three [1 2 +] def four [5 1 -]"),
+            [stack_mutation!(=> Int), stack_mutation!(=> Int)]
+        );
     }
 }

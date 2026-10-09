@@ -752,3 +752,10 @@ pub fn compile_stdlib(bytecode: &mut ByteCode) {
         compile_source(bytecode, lib);
     }
 }
+
+#[cfg(test)]
+pub fn compile_test(source: &str) -> ByteCode {
+    let mut bytecode = ByteCode::default();
+    Compiler::new(&mut bytecode, "test.adv", source).compile();
+    bytecode
+}
