@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::bytecode::{BlockId, ByteCode, DefId, Definition, LayoutId, LocalId, Op, PropId};
+use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
@@ -11,12 +11,16 @@ pub enum BuiltinType {
     None,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct GenericId(u64);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
     Object(LayoutId),
     Local(LocalId),
     Prop(PropId),
+    Generic(GenericId),
     Unknown,
 }
 impl Type {
@@ -44,50 +48,93 @@ impl StackMutation {
     }
 }
 macro_rules! stack_mutation {
-    ($b_field:ident($b_id:ident) => $a_field:ident($a_id:ident)) => {
+    // (=>) => {
+    //     StackMutation {
+    //         before: vec![],
+    //         after: vec![],
+    //     }
+    // };
+    ($($l_field:ident $(($l_prop:tt))? )* => $($r_field:ident $(($r_prop:tt))?)*) => {
         StackMutation {
-            before: vec![Type::$b_field($b_id)],
-            after: vec![Type::$a_field($a_id)],
+            before: stack_mutation!(stack_state $($l_field $(($l_prop))?)*),
+            after: stack_mutation!(stack_state $($r_field $(($r_prop))?)*),
         }
     };
-    ($field:ident($id:ident) =>) => {
-        StackMutation {
-            before: vec![Type::$field($id)],
-            after: vec![],
+    // ([$($lhs:tt)*] => [$($rhs:tt)*]) => {
+    //     StackMutation {
+    //         before: stack_mutation!(stack_state $($lhs)*),
+    //         after: stack_mutation!(stack_state $($rhs)*),
+    //     }
+    // };
+    (stack_state) => {
+        vec![]
+    };
+    (stack_state $($stack:tt)*) => {{
+        #[allow(clippy::vec_init_then_push)]
+        {
+            let mut v = vec![];
+            stack_mutation!(expand, v; $($stack)*);
+            v
         }
+    }};
+    (expand, $v:expr; Type $($stack:tt)*) => {
+        $v.push(Type::Builtin(BuiltinType::Type));
+        stack_mutation!(expand, $v; $($stack)*);
     };
-    (=> $field:ident($id:ident)) => {
-        StackMutation {
-            before: vec![],
-            after: vec![Type::$field($id)],
-        }
+    (expand, $v:expr;) => {};
+    (expand, $v:expr; Int $($stack:tt)*) => {
+        $v.push(Type::Builtin(BuiltinType::Int));
+        stack_mutation!(expand, $v; $($stack)*);
     };
-    ($($before:ident) * => $($after:ident) *) => {
-        StackMutation {
-            before: vec![$(stack_mutation!(literal $before)),*],
-            after: vec![$(stack_mutation!(literal $after)),*],
-        }
+    (expand, $v:expr; Char $($stack:tt)*) => {
+        $v.push(Type::Builtin(BuiltinType::Char));
+        stack_mutation!(expand, $v; $($stack)*);
     };
-    (literal Unknown) => {
-        Type::Unknown
+    (expand, $v:expr; Bool $($stack:tt)*) => {
+        $v.push(Type::Builtin(BuiltinType::Bool));
+        stack_mutation!(expand, $v; $($stack)*);
     };
-    (literal $builtin:ident) => {
-        Type::Builtin(BuiltinType::$builtin)
+    (expand, $v:expr; None $($stack:tt)*) => {
+        $v.push(Type::Builtin(BuiltinType::None));
+        stack_mutation!(expand, $v; $($stack)*);
+    };
+    (expand, $v:expr; Unknown $($stack:tt)*) => {
+        $v.push(Type::Unknown);
+        stack_mutation!(expand, $v; $($stack)*);
+    };
+    (expand, $v:expr; Object($layout_id:expr) $($stack:tt)*) => {
+        $v.push(Type::Object($layout_id));
+        stack_mutation!(expand, $v; $($stack)*);
+    };
+    (expand, $v:expr; T($id:tt) $($stack:tt)*) => {
+        $v.push(Type::Generic(GenericId($id)));
+        stack_mutation!(expand, $v; $($stack)*);
     };
 }
 impl StackMutation {
     // TODO make this mutate
     fn chain(&self, other: &StackMutation) -> StackMutation {
+        let mut generics: HashMap<GenericId, Type> = HashMap::new();
         for (lhs, rhs) in self.after.iter().rev().zip(other.before.iter().rev()) {
-            if lhs != &Type::Unknown && rhs != &Type::Unknown {
+            if let Type::Generic(_) = lhs {
+                todo!("generics are not concrete types");
+            } else if let Type::Generic(t) = rhs {
+                if let Some(existing) = generics.get(t) {
+                    todo!("reconcile");
+                } else {
+                    generics.insert(*t, lhs.clone());
+                }
+            } else if lhs != &Type::Unknown && rhs != &Type::Unknown {
                 assert_eq!(
                     lhs, rhs,
                     "noooo {self:?}  :::  {other:?}\n{lhs:?} != {rhs:?}"
                 );
             }
         }
-        if self.after.len() >= other.before.len() {
-            // (a->b c d) + (c d->) = (a-> b)
+        let mut mutation = if self.after.len() >= other.before.len() {
+            //   (a->b c d)
+            // +      (c d->)
+            // = (a->b)
             let mut after = Vec::from(&self.after[..(self.after.len() - other.before.len())]);
             after.append(&mut other.after.clone());
             StackMutation {
@@ -95,14 +142,27 @@ impl StackMutation {
                 after,
             }
         } else {
-            // (a->b) + (c d->e) = (c a->e)
+            //      (a->b)
+            // + (c   b    ->d)
+            // = (c   a    ->d)
             let mut before = Vec::from(&other.before[..other.before.len() - self.after.len()]);
             before.append(&mut self.before.clone());
-            StackMutation {
-                before,
-                after: other.after.clone(),
+            let after = other.after.clone();
+            StackMutation { before, after }
+        };
+        {
+            for b in mutation.before.iter_mut() {
+                if let Type::Generic(t) = b {
+                    *b = generics.get(t).expect("undefined generic").clone()
+                }
+            }
+            for a in mutation.after.iter_mut() {
+                if let Type::Generic(t) = a {
+                    *a = generics.get(t).expect("undefined generic").clone()
+                }
             }
         }
+        mutation
     }
     fn reconcile(&self, other: &StackMutation) -> StackMutation {
         let before = self
@@ -334,9 +394,9 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::ReturnClosure => stack_mutation!(=>), // TODO
             Op::GoTo(_) => stack_mutation!(=>),
             Op::GoToIf(_) => stack_mutation!(Bool=>),
-            Op::Dup => stack_mutation!(Unknown=>Unknown Unknown),
-            Op::Swap => stack_mutation!(Unknown Unknown=>Unknown Unknown),
-            Op::Drop => stack_mutation!(Unknown=>),
+            Op::Dup => stack_mutation!(T(0)=>T(0) T(0)),
+            Op::Swap => stack_mutation!(T(0) T(1)=>T(1) T(0)),
+            Op::Drop => stack_mutation!(T(0)=>),
             Op::BindLocal(_local_id) => stack_mutation!(Unknown=>),
             Op::PushLocal(_local_id) => stack_mutation!(=>Unknown),
             Op::BindProp(_prop_id) => stack_mutation!(Unknown Unknown=>),
@@ -406,22 +466,117 @@ mod test {
         ($source:expr) => {{
             let bytecode = compile_test($source);
             let mut types = Types::new(&bytecode);
+            types.infer();
             bytecode
                 .iter_def_ids()
-                .map(move |def_id| {
-                    let def_inferer = DefInferer::new(&mut types);
-                    def_inferer.infer_def(def_id)
-                })
+                .map(|def_id| types.type_of_def(def_id).clone())
                 .collect::<Vec<StackMutation>>()
         }};
     }
 
     #[test]
-    fn test_simple_type_inference() {
+    fn test_simple() {
+        assert_eq!(infer_defs!("def one [1]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def two [1 2]"), [stack_mutation!(=> Int Int)]);
         assert_eq!(infer_defs!("def three [1 2 +]"), [stack_mutation!(=> Int)]);
         assert_eq!(
             infer_defs!("def three [1 2 +] def four [5 1 -]"),
             [stack_mutation!(=> Int), stack_mutation!(=> Int)]
+        );
+        assert_eq!(
+            infer_defs!("def one [1] def two [one one +]"),
+            [stack_mutation!(=> Int), stack_mutation!(=> Int)]
+        );
+    }
+    #[test]
+    fn test_types() {
+        assert_eq!(infer_defs!("def zero [0]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def a ['a']"), [stack_mutation!(=> Char)]);
+        // TODO use builtins
+        assert_eq!(infer_defs!("def t [1 1 ==]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def f [1 2 ==]"), [stack_mutation!(=> Bool)]);
+    }
+    #[test]
+    fn test_arithmetic() {
+        assert_eq!(infer_defs!("def add [1 2 +]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def sub [1 2 -]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def mul [1 2 *]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def div [1 2 /]"), [stack_mutation!(=> Int)]);
+    }
+    #[test]
+    fn test_comparison() {
+        assert_eq!(infer_defs!("def eq [1 2 ==]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def neq [1 2 !=]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def gt [1 2 >]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def lt [1 2 <]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def gte [1 2 >=]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def lte [1 2 <=]"), [stack_mutation!(=> Bool)]);
+    }
+    #[test]
+    fn test_bool_ops() {
+        // TODO use builtins
+        assert_eq!(
+            infer_defs!("def and [[1 1 ==] [1 1 ==] and]"),
+            [stack_mutation!(=> Bool)]
+        );
+        assert_eq!(
+            infer_defs!("def or [[1 1 ==] [1 1 ==] or]"),
+            [stack_mutation!(=> Bool)]
+        );
+        assert_eq!(
+            infer_defs!("def not [[1 1 ==] not]"),
+            [stack_mutation!(=> Bool)]
+        );
+    }
+    #[test]
+    fn test_dup() {
+        assert_eq!(
+            infer_defs!("def clone [1 dup]"),
+            [stack_mutation!(=> Int Int)]
+        );
+    }
+    #[test]
+    fn test_drop() {
+        assert_eq!(infer_defs!("def nothin [1 drop]"), [stack_mutation!(=> )]);
+    }
+    #[test]
+    fn test_swap() {
+        assert_eq!(
+            infer_defs!("def exchange ['1' 2 swap]"),
+            [stack_mutation!(=> Int Char)]
+        );
+    }
+    #[test]
+    fn test_return() {
+        assert_eq!(infer_defs!("def one [1 return]"), [stack_mutation!(=> Int)]);
+    }
+    #[test]
+    fn test_if() {
+        assert_eq!(
+            infer_defs!("def one [[1 1 ==] if [1] else [2]]"),
+            [stack_mutation!(=> Int)]
+        );
+    }
+    #[test]
+    fn test_if_return() {
+        assert_eq!(
+            infer_defs!("def one [[1 1 ==] if [1 return] else [2 return]]"),
+            [stack_mutation!(=> Int)]
+        );
+    }
+    #[test]
+    fn test_infinite_loop() {
+        // TODO this should error because the stack could grow by a variable amount
+        assert_ne!(
+            infer_defs!(
+                "def infinite [
+                loop [
+                    1
+                    [1 2 ==] if [break]
+                ]
+            ]"
+            ),
+            [stack_mutation!(=>Int)]
         );
     }
 }
