@@ -9,6 +9,7 @@ use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 use crate::{
     bytecode::{
         BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
+        Terminator,
     },
     type_check::{BuiltinType, StackMutation, Type},
     vm::VM,
@@ -283,12 +284,12 @@ impl<'a, 's> DefCompiler<'a, 's> {
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
         goto_parent!(cursor);
-        block_compiler.push(cursor, Op::Return);
+        block_compiler.set_terminator(Terminator::Return);
     }
     fn compile_closure(&mut self, cursor: &mut TreeCursor, block_id: BlockId) {
         let mut block_compiler = BlockCompiler::new(self, block_id);
         block_compiler.compile_expression(cursor);
-        block_compiler.push(cursor, Op::ReturnClosure);
+        block_compiler.set_terminator(Terminator::ReturnClosure);
     }
     fn closure_id(&self, macro_var: PropId) -> Result<ClosureId, ()> {
         self.macro_vars
@@ -325,6 +326,10 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             cursor.node().byte_range(),
         );
     }
+    fn set_terminator(&mut self, terminator: Terminator) {
+        let bytecode = &mut self.def_compiler.compiler.bytecode;
+        bytecode.get_block_mut(self.block_id).terminator = terminator;
+    }
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
         goto_first_child!(cursor);
@@ -357,27 +362,36 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
         eprintln!("id {string_repr}");
         if let Ok(builtin) = Builtin::try_from(string_repr) {
-            let op = match builtin {
-                Builtin::Dup => Op::Dup,
-                Builtin::Swap => Op::Swap,
-                Builtin::Drop => Op::Drop,
-                Builtin::And => Op::And,
-                Builtin::Or => Op::Or,
-                Builtin::Not => Op::Not,
-                Builtin::Print => Op::Print,
-                Builtin::Break => Op::GoTo(
-                    *self
-                        .def_compiler
-                        .loop_stack
-                        .last()
-                        .expect("cannot break while outside of loop"),
-                ),
-                Builtin::Return => Op::Return,
-                Builtin::EmptyArray => Op::EmptyArray,
-                Builtin::ArrayGet => Op::ArrayGet,
-                Builtin::ArraySet => Op::ArraySet,
-            };
-            self.push(cursor, op);
+            if let Some(op) = match builtin {
+                Builtin::Dup => Some(Op::Dup),
+                Builtin::Swap => Some(Op::Swap),
+                Builtin::Drop => Some(Op::Drop),
+                Builtin::And => Some(Op::And),
+                Builtin::Or => Some(Op::Or),
+                Builtin::Not => Some(Op::Not),
+                Builtin::Print => Some(Op::Print),
+                Builtin::Break => {
+                    self.set_terminator(Terminator::GoTo(
+                        *self
+                            .def_compiler
+                            .loop_stack
+                            .last()
+                            .expect("cannot break while outside of loop"),
+                    ));
+                    self.block_id = self.def_compiler.compiler.bytecode.new_block();
+                    None
+                }
+                Builtin::Return => {
+                    self.set_terminator(Terminator::Return);
+                    self.block_id = self.def_compiler.compiler.bytecode.new_block();
+                    None
+                }
+                Builtin::EmptyArray => Some(Op::EmptyArray),
+                Builtin::ArrayGet => Some(Op::ArrayGet),
+                Builtin::ArraySet => Some(Op::ArraySet),
+            } {
+                self.push(cursor, op);
+            }
         } else if let Some(&def_id) = self.def_compiler.compiler.bytecode.def_ids.get(string_repr) {
             eprintln!("Looked up {def_id:?}");
             let macro_vars_size = self
@@ -658,18 +672,28 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         {
             let mut then_block_compiler = BlockCompiler::new(self.def_compiler, then_block_id);
             then_block_compiler.compile_expression(cursor);
-            then_block_compiler.push(cursor, Op::GoTo(finally_block_id));
+            then_block_compiler.set_terminator(Terminator::GoTo(finally_block_id));
         }
-        self.push(cursor, Op::GoToIf(then_block_id));
 
         skip_comments!(cursor);
         if cursor.goto_next_sibling() {
             // else
             goto_next_sibling!(cursor);
-            self.compile_expression(cursor);
+            let else_block_id = self.def_compiler.compiler.bytecode.new_block();
+            let mut else_block_compiler = BlockCompiler::new(self.def_compiler, else_block_id);
+            else_block_compiler.compile_expression(cursor);
+            else_block_compiler.set_terminator(Terminator::GoTo(finally_block_id));
+            self.set_terminator(Terminator::GoToIf {
+                then: then_block_id,
+                or_else: else_block_id,
+            });
+        } else {
+            self.set_terminator(Terminator::GoToIf {
+                then: then_block_id,
+                or_else: finally_block_id,
+            });
         }
 
-        self.push(cursor, Op::GoTo(finally_block_id));
         self.block_id = finally_block_id;
         goto_parent!(cursor);
     }
@@ -686,9 +710,9 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             {
                 let mut loop_block_compiler = BlockCompiler::new(self.def_compiler, loop_block_id);
                 loop_block_compiler.compile_expression(cursor);
-                loop_block_compiler.push(cursor, Op::GoTo(loop_block_id));
+                loop_block_compiler.set_terminator(Terminator::GoTo(loop_block_id));
             }
-            self.push(cursor, Op::GoTo(loop_block_id));
+            self.set_terminator(Terminator::GoTo(loop_block_id));
         }
         self.def_compiler
             .loop_stack

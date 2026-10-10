@@ -1,5 +1,5 @@
 use crate::source;
-use std::{fmt::Write, io::Read, ops::Range};
+use std::{fmt::Write, ops::Range};
 
 use crate::bytecode::{
     BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
@@ -180,7 +180,6 @@ struct StackFrame {
 
 pub struct VM<'a> {
     bytecode: &'a ByteCode,
-    frame: StackFrame,
     stack: Vec<u64>,
     call_stack: Vec<StackFrame>,
     objects: Vec<Object>,
@@ -188,36 +187,34 @@ pub struct VM<'a> {
 }
 
 impl VM<'_> {
-    fn next_word(&mut self) -> u64 {
-        let word = self.bytecode.get_block(self.frame.block_id).data[self.frame.pc];
-        self.frame.pc += 1;
-        word
+    fn next_word(&mut self) -> Option<u64> {
+        let frame = self.call_stack.last_mut()?;
+        let word = self.bytecode.get_block(frame.block_id).data[frame.pc];
+        frame.pc += 1;
+        Some(word)
     }
 }
 impl Iterator for VM<'_> {
     type Item = Op;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.frame.pc >= self.bytecode.get_block(self.frame.block_id).data.len() {
+        let frame = self.call_stack.last_mut()?;
+        if frame.pc >= self.bytecode.get_block(frame.block_id).data.len() {
             return None;
         }
-        let opcode = OpCode::try_from(self.next_word()).expect("invalid opcode");
+        let opcode = OpCode::try_from(self.next_word()?).expect("invalid opcode");
         let op = match opcode {
-            OpCode::Integer => Op::Integer(self.next_word()),
-            OpCode::Character => Op::Character(self.next_word() as u8),
-            OpCode::Call => Op::Call(DefId::new(self.next_word())),
-            OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
-            OpCode::Return => Op::Return,
-            OpCode::ReturnClosure => Op::ReturnClosure,
-            OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
-            OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
+            OpCode::Integer => Op::Integer(self.next_word()?),
+            OpCode::Character => Op::Character(self.next_word()? as u8),
+            OpCode::Call => Op::Call(DefId::new(self.next_word()?)),
+            OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word()?)),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Drop => Op::Drop,
-            OpCode::BindLocal => Op::BindLocal(LocalId::new(self.next_word())),
-            OpCode::PushLocal => Op::PushLocal(LocalId::new(self.next_word())),
-            OpCode::BindProp => Op::BindProp(PropId::new(self.next_word())),
-            OpCode::PushProp => Op::PushProp(PropId::new(self.next_word())),
+            OpCode::BindLocal => Op::BindLocal(LocalId::new(self.next_word()?)),
+            OpCode::PushLocal => Op::PushLocal(LocalId::new(self.next_word()?)),
+            OpCode::BindProp => Op::BindProp(PropId::new(self.next_word()?)),
+            OpCode::PushProp => Op::PushProp(PropId::new(self.next_word()?)),
             OpCode::Add => Op::Add,
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
@@ -232,8 +229,8 @@ impl Iterator for VM<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
-            OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word())),
-            OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word())),
+            OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word()?)),
+            OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word()?)),
             OpCode::EmptyArray => Op::EmptyArray,
             OpCode::ArrayGet => Op::ArrayGet,
             OpCode::ArraySet => Op::ArraySet,
@@ -257,12 +254,11 @@ impl<'a> VM<'a> {
             closure_stack: vec![],
         };
         let stack = vec![];
-        let call_stack = vec![];
+        let call_stack = vec![frame];
         let objects = vec![];
         let arrays = vec![];
         Self {
             bytecode,
-            frame,
             stack,
             call_stack,
             objects,
@@ -295,6 +291,7 @@ impl<'a> VM<'a> {
         while let Some(op) = self.next() {
             self.step(&op)?;
         }
+        todo!("handle block terminator");
         Ok(())
     }
     fn step(&mut self, op: &Op) -> Result<()> {
@@ -304,10 +301,11 @@ impl<'a> VM<'a> {
             Op::Character(c) => self.op_character(c),
             Op::Call(def_id) => self.op_call(def_id)?,
             Op::CallClosure(closure_id) => self.op_call_closure(closure_id),
-            Op::Return => self.op_return(),
-            Op::ReturnClosure => self.op_return_closure(),
-            Op::GoTo(block_id) => self.op_go_to(block_id),
-            Op::GoToIf(block_id) => self.op_go_to_if(block_id)?,
+            // TODO
+            // Op::Return => self.terminator_return(),
+            // Op::ReturnClosure => self.terminator_return_closure(),
+            // Op::GoTo(block_id) => self.terminator_go_to(block_id),
+            // Op::GoToIf(block_id) => self.terminator_go_to_if(block_id)?,
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap()?,
             Op::Drop => self.op_drop()?,
@@ -340,10 +338,11 @@ impl<'a> VM<'a> {
 }
 impl VM<'_> {
     fn error(&self, kind: ErrorKind) -> Error {
+        let frame = self.call_stack.last().expect("nothing on call stack");
         let source_ref = self
             .bytecode
             .source_map
-            .get(self.frame.block_id, self.frame.pc.saturating_sub(1));
+            .get(frame.block_id, frame.pc.saturating_sub(1));
         Error { kind, source_ref }
     }
     pub fn pop_raw(&mut self) -> Result<u64> {
@@ -429,7 +428,7 @@ impl VM<'_> {
             let closure_def_id = DefId::new(self.pop_integer()? as u64);
             closures.push(closure_def_id);
         }
-        let mut frame = StackFrame {
+        let frame = StackFrame {
             block_id: def.block_id,
             pc: 0,
             locals: def.initialize_locals(),
@@ -437,50 +436,22 @@ impl VM<'_> {
             frame_with_locals: None,
             closure_stack: vec![],
         };
-        std::mem::swap(&mut self.frame, &mut frame);
         self.call_stack.push(frame);
         Ok(())
     }
     fn op_call_closure(&mut self, closure_id: ClosureId) {
-        let def_id = self.frame.closures[closure_id.to_index()];
+        let call_stack_len = self.call_stack.len();
+        let frame = self.call_stack.last_mut().expect("nothing on call stack");
+        let def_id = frame.closures[closure_id.to_index()];
         let def = self.bytecode.get_def(def_id);
         let closure_frame = ClosureFrame {
-            block_id: self.frame.block_id,
-            pc: self.frame.pc,
+            block_id: frame.block_id,
+            pc: frame.pc,
         };
-        self.frame.block_id = def.block_id;
-        self.frame.pc = 0;
-        self.frame.closure_stack.push(closure_frame);
-        self.frame.frame_with_locals = Some(self.call_stack.len() - 1);
-    }
-    fn op_return(&mut self) {
-        if let Some(frame) = self.call_stack.pop() {
-            self.frame = frame;
-        } else {
-            panic!("Done");
-        }
-    }
-    fn op_return_closure(&mut self) {
-        let closure_frame = self
-            .frame
-            .closure_stack
-            .pop()
-            .expect("must be in a closure");
-        self.frame.block_id = closure_frame.block_id;
-        self.frame.pc = closure_frame.pc;
-        self.frame.frame_with_locals = None;
-    }
-    fn op_go_to(&mut self, block_id: BlockId) {
-        self.frame.block_id = block_id;
-        self.frame.pc = 0;
-    }
-    fn op_go_to_if(&mut self, block_id: BlockId) -> Result<()> {
-        let value = self.pop_bool()?;
-        if value {
-            self.frame.block_id = block_id;
-            self.frame.pc = 0;
-        }
-        Ok(())
+        frame.block_id = def.block_id;
+        frame.pc = 0;
+        frame.closure_stack.push(closure_frame);
+        frame.frame_with_locals = Some(call_stack_len - 1);
     }
     fn op_dup(&mut self) {
         let peek = *self.stack.last().unwrap();
@@ -498,20 +469,23 @@ impl VM<'_> {
         Ok(())
     }
     fn op_bind_local(&mut self, local_id: LocalId) -> Result<()> {
+        // TODO Result
         let value = self.pop()?;
-        let locals = if let Some(idx) = self.frame.frame_with_locals {
+        let frame = self.call_stack.last_mut().expect("nothing on call stack");
+        let locals = if let Some(idx) = frame.frame_with_locals {
             &mut self.call_stack[idx].locals
         } else {
-            &mut self.frame.locals
+            &mut frame.locals
         };
         locals[local_id.to_index()] = u64::from(value);
         Ok(())
     }
     fn op_push_local(&mut self, local_id: LocalId) {
-        let locals = if let Some(idx) = self.frame.frame_with_locals {
+        let frame = self.call_stack.last_mut().expect("nothing on call stack");
+        let locals = if let Some(idx) = frame.frame_with_locals {
             &self.call_stack[idx].locals
         } else {
-            &self.frame.locals
+            &frame.locals
         };
         let value = locals[local_id.to_index()];
         self.stack.push(value);
@@ -759,6 +733,32 @@ impl VM<'_> {
         let arr_id = self.pop_array_ref()?;
         let array = &mut self.arrays[arr_id];
         array.elements[index] = u64::from(value);
+        Ok(())
+    }
+    fn terminator_return(&mut self) {
+        if self.call_stack.pop().is_none() {
+            panic!("Done");
+        }
+    }
+    fn terminator_return_closure(&mut self) {
+        let frame = self.call_stack.last_mut().expect("nothing on call stack");
+        let closure_frame = frame.closure_stack.pop().expect("must be in a closure");
+        frame.block_id = closure_frame.block_id;
+        frame.pc = closure_frame.pc;
+        frame.frame_with_locals = None;
+    }
+    fn terminator_go_to(&mut self, block_id: BlockId) {
+        let frame = self.call_stack.last_mut().expect("nothing on call stack");
+        frame.block_id = block_id;
+        frame.pc = 0;
+    }
+    fn terminator_go_to_if(&mut self, block_id: BlockId) -> Result<()> {
+        let value = self.pop_bool()?;
+        if value {
+            let frame = self.call_stack.last_mut().expect("nothing on call stack");
+            frame.block_id = block_id;
+            frame.pc = 0;
+        }
         Ok(())
     }
 }

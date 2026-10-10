@@ -8,10 +8,6 @@ pub enum OpCode {
     Character,
     Call,
     CallClosure,
-    Return,
-    ReturnClosure,
-    GoTo,
-    GoToIf,
     Dup,
     Swap,
     Drop,
@@ -65,10 +61,6 @@ opcode_u64_conversions!(
     0x2 => Character,
     0x3 => Call,
     0x4 => CallClosure,
-    0x5 => Return,
-    0x6 => ReturnClosure,
-    0x7 => GoTo,
-    0x8 => GoToIf,
     0x10 => Dup,
     0x11 => Swap,
     0x12 => Drop,
@@ -166,10 +158,6 @@ pub enum Op {
     Character(u8),
     Call(DefId),
     CallClosure(ClosureId),
-    Return,
-    ReturnClosure,
-    GoTo(BlockId),
-    GoToIf(BlockId),
     Dup,
     Swap,
     Drop,
@@ -204,10 +192,6 @@ impl From<Op> for OpCode {
             Op::Character(_) => OpCode::Character,
             Op::Call(_) => OpCode::Call,
             Op::CallClosure(_) => OpCode::CallClosure,
-            Op::Return => OpCode::Return,
-            Op::ReturnClosure => OpCode::ReturnClosure,
-            Op::GoTo(_) => OpCode::GoTo,
-            Op::GoToIf(_) => OpCode::GoToIf,
             Op::Dup => OpCode::Dup,
             Op::Swap => OpCode::Swap,
             Op::Drop => OpCode::Drop,
@@ -239,8 +223,21 @@ impl From<Op> for OpCode {
 }
 
 #[derive(Debug, Default)]
+pub enum Terminator {
+    #[default]
+    Return,
+    ReturnClosure,
+    GoTo(BlockId),
+    GoToIf {
+        then: BlockId,
+        or_else: BlockId,
+    },
+}
+
+#[derive(Debug, Default)]
 pub struct Block {
     pub data: Vec<u64>,
+    pub terminator: Terminator,
 }
 pub enum OpSize {
     One,
@@ -254,8 +251,6 @@ impl Block {
             Op::Character(c) => Some(c as u64),
             Op::Call(def_id) => Some(def_id.0),
             Op::CallClosure(def_id) => Some(def_id.0),
-            Op::GoTo(block_id) => Some(block_id.0),
-            Op::GoToIf(block_id) => Some(block_id.0),
             Op::BindLocal(local_id) => Some(local_id.0),
             Op::PushLocal(local_id) => Some(local_id.0),
             Op::BindProp(prop_id) => Some(prop_id.0),
@@ -303,10 +298,6 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Character => Op::Character(self.next_word() as u8),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
             OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
-            OpCode::Return => Op::Return,
-            OpCode::ReturnClosure => Op::ReturnClosure,
-            OpCode::GoTo => Op::GoTo(BlockId::new(self.next_word())),
-            OpCode::GoToIf => Op::GoToIf(BlockId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Drop => Op::Drop,

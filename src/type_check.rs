@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId};
+use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId, Terminator};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
@@ -248,9 +248,10 @@ impl<'b> Types<'b> {
                                     dependencies.push(called_def_id);
                                 }
                             }
-                            Op::GoTo(next_block_id) | Op::GoToIf(next_block_id) => {
-                                blocks_to_check.push(next_block_id)
-                            }
+                            // TODO
+                            // Op::GoTo(next_block_id) | Op::GoToIf(next_block_id) => {
+                            //     blocks_to_check.push(next_block_id)
+                            // }
                             _ => {}
                         }
                     }
@@ -344,43 +345,40 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             let sm = self.infer_op(op);
             eprintln!("ct {:?} sm {:?} op {:?}", self.current_type, sm, op);
             self.current_type = self.current_type.chain(&sm);
-            match op {
-                Op::Return => {
-                    if let Some(existing) = &self.inferred_type {
-                        self.inferred_type = Some(self.current_type.reconcile(existing));
-                    } else {
-                        self.inferred_type = Some(self.current_type.clone());
-                    }
-                    break;
+        }
+        match block.terminator {
+            Terminator::Return => {
+                if let Some(existing) = &self.inferred_type {
+                    self.inferred_type = Some(self.current_type.reconcile(existing));
+                } else {
+                    self.inferred_type = Some(self.current_type.clone());
                 }
-                Op::ReturnClosure => {
-                    if let Some(existing) = &self.inferred_type {
-                        self.inferred_type = Some(self.current_type.reconcile(existing));
-                    } else {
-                        self.inferred_type = Some(self.current_type.clone());
-                    }
-                    break;
+            }
+            Terminator::ReturnClosure => {
+                if let Some(existing) = &self.inferred_type {
+                    self.inferred_type = Some(self.current_type.reconcile(existing));
+                } else {
+                    self.inferred_type = Some(self.current_type.clone());
                 }
-                Op::GoTo(block_id) => {
-                    if let Some(previous_type) = self.blocks.get(&block_id) {
-                        self.current_type = self.current_type.reconcile(previous_type);
-                        self.blocks.insert(block_id, self.current_type.clone());
-                    } else {
-                        self.walk_block(block_id);
-                    }
-                    break;
+            }
+            Terminator::GoTo(block_id) => {
+                if let Some(previous_type) = self.blocks.get(&block_id) {
+                    self.current_type = self.current_type.reconcile(previous_type);
+                    self.blocks.insert(block_id, self.current_type.clone());
+                } else {
+                    self.walk_block(block_id);
                 }
-                Op::GoToIf(block_id) => {
-                    if let Some(previous_type) = self.blocks.get(&block_id) {
-                        self.current_type = self.current_type.reconcile(previous_type);
-                        self.blocks.insert(block_id, self.current_type.clone());
-                    } else {
-                        let saved_current_type = self.current_type.clone();
-                        self.walk_block(block_id);
-                        self.current_type = saved_current_type;
-                    }
+            }
+            Terminator::GoToIf { then, or_else } => {
+                todo!();
+                if let Some(previous_type) = self.blocks.get(&block_id) {
+                    self.current_type = self.current_type.reconcile(previous_type);
+                    self.blocks.insert(block_id, self.current_type.clone());
+                } else {
+                    let saved_current_type = self.current_type.clone();
+                    self.walk_block(block_id);
+                    self.current_type = saved_current_type;
                 }
-                _ => {}
             }
         }
     }
@@ -390,10 +388,6 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Character(_) => stack_mutation!(=>Char),
             Op::Call(def_id) => self.types.type_of_def(def_id).clone(),
             Op::CallClosure(_closure_id) => stack_mutation!(=>), // TODO
-            Op::Return => stack_mutation!(=>),
-            Op::ReturnClosure => stack_mutation!(=>), // TODO
-            Op::GoTo(_) => stack_mutation!(=>),
-            Op::GoToIf(_) => stack_mutation!(Bool=>),
             Op::Dup => stack_mutation!(T(0)=>T(0) T(0)),
             Op::Swap => stack_mutation!(T(0) T(1)=>T(1) T(0)),
             Op::Drop => stack_mutation!(T(0)=>),
