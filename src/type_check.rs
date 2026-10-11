@@ -2,6 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId, Terminator};
 
+#[derive(Debug)]
+pub enum Error {
+    Foo,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinType {
     Type,
@@ -24,7 +31,7 @@ pub enum Type {
     Unknown,
 }
 impl Type {
-    fn union(&self, other: &Type) -> Result<Type, ()> {
+    fn union(&self, other: &Type) -> Result<Type> {
         if self == other {
             Ok(self.clone())
         } else if self == &Type::Unknown {
@@ -32,7 +39,7 @@ impl Type {
         } else if other == &Type::Unknown {
             Ok(self.clone())
         } else {
-            Err(())
+            Err(Error::Foo)
         }
     }
 }
@@ -166,7 +173,7 @@ impl StackMutation {
     }
     /// Create a new StackMutation representing the union of an initial block state with a new
     /// one. Extend before appropriately, and return an error if after is different.
-    fn reconcile(&self, other: &StackMutation) -> StackMutation {
+    fn reconcile(&self, other: &StackMutation) -> Result<StackMutation> {
         let before = {
             let (shorter, longer) = if self.before.len() <= other.before.len() {
                 (&self.before, &other.before)
@@ -178,18 +185,21 @@ impl StackMutation {
                 .rev()
                 .chain(std::iter::repeat(&Type::Unknown))
                 .zip(longer.iter().rev())
-                .map(|(x, y)| x.union(y).expect("mismatched types"))
-                .collect()
+                .map(|(x, y)| x.union(y))
+                .collect::<Result<Vec<Type>>>()?
         };
         let after = {
-            assert_eq!(self.after.len(), other.after.len());
-            self.after
-                .iter()
-                .zip(other.after.iter())
-                .map(|(x, y)| x.union(y).expect("mismatched types"))
-                .collect()
+            if self.after.len() != other.after.len() {
+                Err(Error::Foo)?
+            } else {
+                self.after
+                    .iter()
+                    .zip(other.after.iter())
+                    .map(|(x, y)| x.union(y))
+                    .collect::<Result<Vec<Type>>>()?
+            }
         };
-        StackMutation { before, after }
+        Ok(StackMutation { before, after })
     }
 }
 impl std::fmt::Debug for StackMutation {
@@ -249,22 +259,24 @@ impl<'b> Types<'b> {
                     checked_blocks.push(block_id);
                     let block = self.bytecode.get_block(block_id);
                     for op in block.iter() {
-                        match op {
-                            Op::Call(called_def_id) => {
-                                if dependencies
-                                    .iter()
-                                    .find(|&&id| id == called_def_id)
-                                    .is_none()
-                                {
-                                    dependencies.push(called_def_id);
-                                }
-                            }
-                            // TODO
-                            // Op::GoTo(next_block_id) | Op::GoToIf(next_block_id) => {
-                            //     blocks_to_check.push(next_block_id)
-                            // }
-                            _ => {}
+                        if let Op::Call(called_def_id) = op
+                            && dependencies
+                                .iter()
+                                .find(|&&id| id == called_def_id)
+                                .is_none()
+                        {
+                            dependencies.push(called_def_id);
                         }
+                    }
+                    match block.terminator {
+                        Terminator::GoTo(block_id) => {
+                            blocks_to_check.push(block_id);
+                        }
+                        Terminator::GoToIf { then, or_else } => {
+                            blocks_to_check.push(then);
+                            blocks_to_check.push(or_else);
+                        }
+                        _ => (),
                     }
                 }
             }
@@ -300,10 +312,10 @@ impl<'b> Types<'b> {
             check_def(&graph, &mut stack, &mut checked, *root_def_id);
         }
     }
-    fn type_of_def(&mut self, def_id: DefId) -> &StackMutation {
+    fn type_of_def(&mut self, def_id: DefId) -> Result<&StackMutation> {
         // First, check the precomputed cache
         if self.def_types.contains_key(&def_id) {
-            self.def_types.get(&def_id).unwrap()
+            Ok(self.def_types.get(&def_id).unwrap())
         } else {
             // Second, check if a type was declared.
             let t = self
@@ -311,14 +323,15 @@ impl<'b> Types<'b> {
                 .get_def(def_id)
                 .declared_type
                 .clone()
+                .map(Ok)
                 // Third, compute the type
-                .unwrap_or_else(|| self.infer_def(def_id));
+                .unwrap_or_else(|| self.infer_def(def_id))?;
             // Save the declared or computed type for next time.
             self.def_types.insert(def_id, t);
-            self.def_types.get(&def_id).unwrap()
+            Ok(self.def_types.get(&def_id).unwrap())
         }
     }
-    fn infer_def(&mut self, def_id: DefId) -> StackMutation {
+    fn infer_def(&mut self, def_id: DefId) -> Result<StackMutation> {
         DefInferer::new(self).infer_def(def_id)
     }
 }
@@ -341,43 +354,43 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             inferred_type,
         }
     }
-    fn infer_def(mut self, def_id: DefId) -> StackMutation {
+    fn infer_def(mut self, def_id: DefId) -> Result<StackMutation> {
         let def = self.types.bytecode.get_def(def_id);
         eprintln!("Inferring def {def:?}");
-        self.walk_block(def.block_id);
-        self.inferred_type.expect("no return statements")
+        self.walk_block(def.block_id)?;
+        Ok(self.inferred_type.expect("no return statements"))
     }
-    fn walk_block(&mut self, block_id: BlockId) {
+    fn walk_block(&mut self, block_id: BlockId) -> Result<()> {
         eprintln!("Walking {block_id:?}: {:?}", self.current_type);
         self.blocks.insert(block_id, self.current_type.clone());
         let block = self.types.bytecode.get_block(block_id);
         eprintln!("{:?}", block.pretty_print());
         for op in block.iter() {
-            let sm = self.infer_op(op);
+            let sm = self.infer_op(op)?;
             eprintln!("ct {:?} sm {:?} op {:?}", self.current_type, sm, op);
             self.current_type = self.current_type.chain(&sm);
         }
         match block.terminator {
             Terminator::Return => {
                 if let Some(existing) = &self.inferred_type {
-                    self.inferred_type = Some(self.current_type.reconcile(existing));
+                    self.inferred_type = Some(self.current_type.reconcile(existing)?);
                 } else {
                     self.inferred_type = Some(self.current_type.clone());
                 }
             }
             Terminator::ReturnClosure => {
                 if let Some(existing) = &self.inferred_type {
-                    self.inferred_type = Some(self.current_type.reconcile(existing));
+                    self.inferred_type = Some(self.current_type.reconcile(existing)?);
                 } else {
                     self.inferred_type = Some(self.current_type.clone());
                 }
             }
             Terminator::GoTo(block_id) => {
                 if let Some(previous_type) = self.blocks.get(&block_id) {
-                    self.current_type = self.current_type.reconcile(previous_type);
+                    self.current_type = self.current_type.reconcile(previous_type)?;
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
-                    self.walk_block(block_id);
+                    self.walk_block(block_id)?;
                 }
             }
             Terminator::GoToIf { then, or_else } => {
@@ -385,29 +398,30 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 self.current_type = self.current_type.chain(&stack_mutation!(Bool=>));
                 let mut then_type = self.current_type.clone();
                 if let Some(previous_type) = self.blocks.get(&then) {
-                    self.current_type = self.current_type.reconcile(previous_type);
+                    self.current_type = self.current_type.reconcile(previous_type)?;
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
-                    self.walk_block(then);
+                    self.walk_block(then)?;
                 }
                 // Restore self.current_type and save the type of the then branch
                 std::mem::swap(&mut self.current_type, &mut then_type);
                 if let Some(previous_type) = self.blocks.get(&or_else) {
-                    self.current_type = self.current_type.reconcile(previous_type);
+                    self.current_type = self.current_type.reconcile(previous_type)?;
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
-                    self.walk_block(or_else);
+                    self.walk_block(or_else)?;
                 }
                 // Verify then and or_else branches have the same type
-                self.current_type = self.current_type.reconcile(&then_type);
+                self.current_type = self.current_type.reconcile(&then_type)?;
             }
         }
+        Ok(())
     }
-    fn infer_op(&mut self, op: Op) -> StackMutation {
-        match op {
+    fn infer_op(&mut self, op: Op) -> Result<StackMutation> {
+        Ok(match op {
             Op::Integer(_) => stack_mutation!(=>Int),
             Op::Character(_) => stack_mutation!(=>Char),
-            Op::Call(def_id) => self.types.type_of_def(def_id).clone(),
+            Op::Call(def_id) => return self.types.type_of_def(def_id).cloned(),
             Op::CallClosure(_closure_id) => stack_mutation!(=>), // TODO
             Op::Dup => stack_mutation!(T(0)=>T(0) T(0)),
             Op::Swap => stack_mutation!(T(0) T(1)=>T(1) T(0)),
@@ -442,7 +456,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::EmptyArray => stack_mutation!(Int => Unknown),
             Op::ArrayGet => stack_mutation!(Unknown Int => Unknown),
             Op::ArraySet => stack_mutation!(Unknown Int Unknown =>),
-        }
+        })
     }
 }
 
@@ -484,7 +498,7 @@ mod test {
             types.infer();
             bytecode
                 .iter_def_ids()
-                .map(|def_id| types.type_of_def(def_id).clone())
+                .map(|def_id| types.type_of_def(def_id).cloned().unwrap())
                 .collect::<Vec<StackMutation>>()
         }};
     }
