@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId, Terminator};
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     Foo,
 }
@@ -491,6 +491,17 @@ mod test {
         test_stack_mutation!((=>Char) + (Int Char=>) == (Int=>));
     }
 
+    macro_rules! infer_def_results {
+        ($source:expr) => {{
+            let bytecode = compile_test($source);
+            let mut types = Types::new(&bytecode);
+            types.infer();
+            bytecode
+                .iter_def_ids()
+                .map(|def_id| types.type_of_def(def_id).cloned())
+                .collect::<Vec<Result<StackMutation>>>()
+        }};
+    }
     macro_rules! infer_defs {
         ($source:expr) => {{
             let bytecode = compile_test($source);
@@ -596,8 +607,8 @@ mod test {
     #[test]
     fn test_infinite_loop() {
         // TODO this should error because the stack could grow by a variable amount
-        assert_ne!(
-            infer_defs!(
+        assert_eq!(
+            infer_def_results!(
                 "def infinite [
                 loop [
                     1
@@ -605,7 +616,7 @@ mod test {
                 ]
             ]"
             ),
-            [stack_mutation!(=>Int)]
+            [Err(Error::Foo)]
         );
     }
 }
