@@ -164,20 +164,31 @@ impl StackMutation {
         }
         mutation
     }
+    /// Create a new StackMutation representing the union of an initial block state with a new
+    /// one. Extend before appropriately, and return an error if after is different.
     fn reconcile(&self, other: &StackMutation) -> StackMutation {
-        let before = self
-            .before
-            .iter()
-            .rev()
-            .zip(other.before.iter().rev())
-            .map(|(x, y)| x.union(y).expect("mismatched types"))
-            .collect();
-        let after = self
-            .after
-            .iter()
-            .zip(other.after.iter())
-            .map(|(x, y)| x.union(y).expect("mismatched types"))
-            .collect();
+        let before = {
+            let (shorter, longer) = if self.before.len() <= other.before.len() {
+                (&self.before, &other.before)
+            } else {
+                (&other.before, &self.before)
+            };
+            shorter
+                .iter()
+                .rev()
+                .chain(std::iter::repeat(&Type::Unknown))
+                .zip(longer.iter().rev())
+                .map(|(x, y)| x.union(y).expect("mismatched types"))
+                .collect()
+        };
+        let after = {
+            assert_eq!(self.after.len(), other.after.len());
+            self.after
+                .iter()
+                .zip(other.after.iter())
+                .map(|(x, y)| x.union(y).expect("mismatched types"))
+                .collect()
+        };
         StackMutation { before, after }
     }
 }
@@ -370,15 +381,25 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 }
             }
             Terminator::GoToIf { then, or_else } => {
-                todo!();
-                if let Some(previous_type) = self.blocks.get(&block_id) {
+                // Consume the boolean
+                self.current_type = self.current_type.chain(&stack_mutation!(Bool=>));
+                let mut then_type = self.current_type.clone();
+                if let Some(previous_type) = self.blocks.get(&then) {
                     self.current_type = self.current_type.reconcile(previous_type);
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
-                    let saved_current_type = self.current_type.clone();
-                    self.walk_block(block_id);
-                    self.current_type = saved_current_type;
+                    self.walk_block(then);
                 }
+                // Restore self.current_type and save the type of the then branch
+                std::mem::swap(&mut self.current_type, &mut then_type);
+                if let Some(previous_type) = self.blocks.get(&or_else) {
+                    self.current_type = self.current_type.reconcile(previous_type);
+                    self.blocks.insert(block_id, self.current_type.clone());
+                } else {
+                    self.walk_block(or_else);
+                }
+                // Verify then and or_else branches have the same type
+                self.current_type = self.current_type.reconcile(&then_type);
             }
         }
     }
