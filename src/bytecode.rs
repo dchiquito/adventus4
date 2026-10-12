@@ -222,7 +222,7 @@ impl From<Op> for OpCode {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum Terminator {
     #[default]
     Return,

@@ -3,7 +3,13 @@ use std::{fmt::Write, ops::Range};
 
 use crate::bytecode::{
     BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
+    Terminator,
 };
+
+pub enum Step {
+    Op(Op),
+    Terminator(Terminator),
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ErrorKind {
@@ -195,12 +201,13 @@ impl VM<'_> {
     }
 }
 impl Iterator for VM<'_> {
-    type Item = Op;
+    type Item = Step;
 
     fn next(&mut self) -> Option<Self::Item> {
         let frame = self.call_stack.last_mut()?;
-        if frame.pc >= self.bytecode.get_block(frame.block_id).data.len() {
-            return None;
+        let block = self.bytecode.get_block(frame.block_id);
+        if frame.pc >= block.data.len() {
+            return Some(Step::Terminator(block.terminator.clone()));
         }
         let opcode = OpCode::try_from(self.next_word()?).expect("invalid opcode");
         let op = match opcode {
@@ -235,7 +242,7 @@ impl Iterator for VM<'_> {
             OpCode::ArrayGet => Op::ArrayGet,
             OpCode::ArraySet => Op::ArraySet,
         };
-        Some(op)
+        Some(Step::Op(op))
     }
 }
 impl<'a> VM<'a> {
@@ -288,24 +295,23 @@ impl<'a> VM<'a> {
         Ok(())
     }
     pub fn run(&mut self) -> Result<()> {
-        while let Some(op) = self.next() {
-            self.step(&op)?;
+        while let Some(step) = self.next() {
+            self.step(&step)?;
         }
-        todo!("handle block terminator");
         Ok(())
     }
-    fn step(&mut self, op: &Op) -> Result<()> {
-        // eprintln!("EXEC {op:?}");
+    fn step(&mut self, step: &Step) -> Result<()> {
+        match step {
+            Step::Op(op) => self.step_op(op),
+            Step::Terminator(terminator) => self.step_terminator(terminator),
+        }
+    }
+    fn step_op(&mut self, op: &Op) -> Result<()> {
         match *op {
             Op::Integer(i) => self.op_integer(i),
             Op::Character(c) => self.op_character(c),
             Op::Call(def_id) => self.op_call(def_id)?,
             Op::CallClosure(closure_id) => self.op_call_closure(closure_id),
-            // TODO
-            // Op::Return => self.terminator_return(),
-            // Op::ReturnClosure => self.terminator_return_closure(),
-            // Op::GoTo(block_id) => self.terminator_go_to(block_id),
-            // Op::GoToIf(block_id) => self.terminator_go_to_if(block_id)?,
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap()?,
             Op::Drop => self.op_drop()?,
@@ -332,6 +338,18 @@ impl<'a> VM<'a> {
             Op::EmptyArray => self.op_empty_array()?,
             Op::ArrayGet => self.op_array_get()?,
             Op::ArraySet => self.op_array_set()?,
+        }
+        Ok(())
+    }
+    fn step_terminator(&mut self, op: &Terminator) -> Result<()> {
+        match *op {
+            Terminator::Return => self.terminator_return(),
+            Terminator::ReturnClosure => self.terminator_return_closure(),
+            Terminator::GoTo(block_id) => self.terminator_go_to(block_id),
+            Terminator::GoToIf {
+                then: then_block_id,
+                or_else: else_block_id,
+            } => self.terminator_go_to_if(then_block_id, else_block_id)?,
         }
         Ok(())
     }
@@ -752,13 +770,15 @@ impl VM<'_> {
         frame.block_id = block_id;
         frame.pc = 0;
     }
-    fn terminator_go_to_if(&mut self, block_id: BlockId) -> Result<()> {
+    fn terminator_go_to_if(
+        &mut self,
+        then_block_id: BlockId,
+        else_block_id: BlockId,
+    ) -> Result<()> {
         let value = self.pop_bool()?;
-        if value {
-            let frame = self.call_stack.last_mut().expect("nothing on call stack");
-            frame.block_id = block_id;
-            frame.pc = 0;
-        }
+        let frame = self.call_stack.last_mut().expect("nothing on call stack");
+        frame.block_id = if value { then_block_id } else { else_block_id };
+        frame.pc = 0;
         Ok(())
     }
 }
