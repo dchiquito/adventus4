@@ -1,3 +1,6 @@
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
+
 use crate::{
     compile::{compile_stdlib, compile_test, compile_test_stdlib},
     type_check::Types,
@@ -48,6 +51,43 @@ fn run_test_cases() {
             panic!("unexpected error in test case #{index}");
         }
         let actual_output = vm.get_io().get_output();
+        assert_eq!(
+            test_case.output, actual_output,
+            "test case #{index}: {}",
+            test_case.source
+        );
+    }
+}
+#[test]
+fn run_test_cases_cli() {
+    for (index, test_case) in &TEST_CASES {
+        let tmp_source = {
+            let mut tmp_source = std::env::temp_dir();
+            tmp_source.push(format!("test_{index}.adv"));
+            tmp_source
+        };
+        std::fs::write(&tmp_source, test_case.source).expect("error writing file");
+        let mut child = Command::new("cargo")
+            .args(["run", "--"])
+            .arg(&tmp_source)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("error starting cargo");
+        let mut stdin = child.stdin.take().expect("error grabbing input");
+        stdin
+            .write_all(test_case.input.as_bytes())
+            .expect("error writing input");
+        let status = child.wait().expect("error waiting for child");
+        assert!(status.success(), "test case #{index} failed");
+        let actual_output = {
+            let mut actual_output = String::new();
+            let mut stdout = child.stdout.take().expect("error grabbing stdout");
+            stdout
+                .read_to_string(&mut actual_output)
+                .expect("error reading output");
+            actual_output
+        };
         assert_eq!(
             test_case.output, actual_output,
             "test case #{index}: {}",
