@@ -23,25 +23,18 @@ macro_rules! no_input {
     };
 }
 
-pub static TEST_CASES: [(usize, TestCase); 6] = [
-    (0, no_input!("def main []", "")),
-    (1, no_input!("def main [0 print]", "0\n")),
-    (2, no_input!("def main [1 print]", "1\n")),
-    (3, no_input!("def main ['a' print]", "a\n")),
-    (4, no_input!("def main [\"abc\" print]", "abc\n")),
-    (5, no_input!("def main [0 print 1 print]", "0\n1\n")),
+pub static TEST_CASES: [TestCase; 6] = [
+    no_input!("def main []", ""),
+    no_input!("def main [0 print]", "0\n"),
+    no_input!("def main [1 print]", "1\n"),
+    no_input!("def main ['a' print]", "a\n"),
+    no_input!("def main [\"abc\" print]", "abc\n"),
+    no_input!("def main [0 print 1 print]", "0\n1\n"),
 ];
 
 #[test]
-fn check_test_cases() {
-    for (actual_index, (index, _)) in TEST_CASES.iter().enumerate() {
-        assert_eq!(actual_index, *index);
-    }
-}
-
-#[test]
 fn run_test_cases() {
-    for (index, test_case) in &TEST_CASES {
+    for (index, test_case) in TEST_CASES.iter().enumerate() {
         let bytecode = compile_test_stdlib(test_case.source);
         let mut types = Types::new(&bytecode);
         types.infer();
@@ -61,7 +54,7 @@ fn run_test_cases() {
 }
 #[test]
 fn run_test_cases_cli() {
-    for (index, test_case) in &TEST_CASES {
+    for (index, test_case) in TEST_CASES.iter().enumerate() {
         let tmp_source = {
             let mut tmp_source = std::env::temp_dir();
             tmp_source.push(format!("test_{index}.adv"));
