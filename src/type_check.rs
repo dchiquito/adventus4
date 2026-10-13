@@ -294,7 +294,7 @@ impl<'b> Types<'b> {
         DefInferer::new(self).infer_def(def_id)
     }
     fn new_generic(&mut self) -> GenericId {
-        let g = self.current_generic.clone();
+        let g = self.current_generic;
         self.current_generic = self.current_generic.incr();
         g
     }

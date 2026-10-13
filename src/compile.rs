@@ -236,7 +236,7 @@ impl<'s> Compiler<'s> {
                 eprintln!("bytecode {:?}", self.bytecode);
                 eprintln!("block_id {block_id:?}");
 
-                let raw_layout_id = evaluate_at_compile_time(&self.bytecode, block_id);
+                let raw_layout_id = evaluate_at_compile_time(self.bytecode, block_id);
                 let layout_id = LayoutId::new(raw_layout_id);
                 Type::Object(layout_id)
             }

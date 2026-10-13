@@ -1,5 +1,3 @@
-use std::io::Read;
-
 use adventus4::{
     bytecode::ByteCode,
     compile::{compile_source, compile_stdlib},

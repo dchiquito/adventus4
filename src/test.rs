@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
 use crate::{
-    compile::{compile_stdlib, compile_test, compile_test_stdlib},
+    compile::compile_test_stdlib,
     type_check::Types,
     vm::{TestIO, VM},
 };

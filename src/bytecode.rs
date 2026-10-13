@@ -247,7 +247,7 @@ impl Block {
     pub fn push(&mut self, op: Op) -> OpSize {
         self.data.push(u64::from(OpCode::from(op)));
         if let Some(word) = match op {
-            Op::Integer(literal) => Some(literal as u64),
+            Op::Integer(literal) => Some(literal),
             Op::Character(c) => Some(c as u64),
             Op::Call(def_id) => Some(def_id.0),
             Op::CallClosure(def_id) => Some(def_id.0),
