@@ -364,7 +364,6 @@ impl<'a, T: IO> VM<'a, T> {
         Ok(())
     }
     fn step(&mut self, step: &Step) -> Result<()> {
-        eprintln!("STEP {step:?}");
         match step {
             Step::Op(op) => self.step_op(op),
             Step::Terminator(terminator) => self.step_terminator(terminator),
@@ -773,7 +772,6 @@ impl<T: IO> VM<'_, T> {
     }
     fn op_print(&mut self) -> Result<()> {
         let value = self.pop()?;
-        self.push(value.clone());
         let mut buf = String::new();
         self._format_value(&mut buf, value).unwrap();
         self.io.write(&buf);
