@@ -6,6 +6,7 @@ use crate::bytecode::{
     Terminator,
 };
 
+#[derive(Debug)]
 pub enum Step {
     Op(Op),
     Terminator(Terminator),
@@ -184,7 +185,50 @@ struct StackFrame {
     closure_stack: Vec<ClosureFrame>,
 }
 
-pub struct VM<'a> {
+pub trait IO {
+    fn read(&mut self) -> &[u64];
+    fn write(&mut self, data: &str);
+}
+
+#[derive(Default)]
+pub struct StdIO {}
+impl IO for StdIO {
+    fn read(&mut self) -> &[u64] {
+        todo!()
+    }
+
+    fn write(&mut self, data: &str) {
+        println!("{data}");
+    }
+}
+
+pub struct TestIO {
+    input: String,
+    output: String,
+}
+impl TestIO {
+    pub fn new(input: &str) -> Self {
+        Self {
+            input: input.to_string(),
+            output: String::new(),
+        }
+    }
+    pub fn get_output(&self) -> &str {
+        &self.output
+    }
+}
+impl IO for TestIO {
+    fn read(&mut self) -> &[u64] {
+        todo!()
+    }
+
+    fn write(&mut self, data: &str) {
+        self.output.push_str(data);
+    }
+}
+
+pub struct VM<'a, T: IO> {
+    io: T,
     bytecode: &'a ByteCode,
     stack: Vec<u64>,
     call_stack: Vec<StackFrame>,
@@ -192,7 +236,7 @@ pub struct VM<'a> {
     arrays: Vec<Array>,
 }
 
-impl VM<'_> {
+impl<T: IO> VM<'_, T> {
     fn next_word(&mut self) -> Option<u64> {
         let frame = self.call_stack.last_mut()?;
         let word = self.bytecode.get_block(frame.block_id).data[frame.pc];
@@ -200,7 +244,7 @@ impl VM<'_> {
         Some(word)
     }
 }
-impl Iterator for VM<'_> {
+impl<T: IO> Iterator for VM<'_, T> {
     type Item = Step;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -245,32 +289,48 @@ impl Iterator for VM<'_> {
         Some(Step::Op(op))
     }
 }
-impl<'a> VM<'a> {
-    pub fn new_main(bytecode: &'a ByteCode) -> Self {
-        let def_id = bytecode.main_id.expect("no main definition");
-        let block_id = bytecode.get_def(def_id).block_id;
-        Self::new(bytecode, def_id, block_id)
-    }
-    pub fn new(bytecode: &'a ByteCode, def_id: DefId, block_id: BlockId) -> Self {
-        let frame = StackFrame {
-            block_id,
-            pc: 0,
-            locals: bytecode.get_def(def_id).initialize_locals(),
-            closures: vec![],
-            frame_with_locals: None,
-            closure_stack: vec![],
-        };
+impl<'a, T: IO> VM<'a, T> {
+    pub fn new(bytecode: &'a ByteCode, io: T) -> Self {
         let stack = vec![];
-        let call_stack = vec![frame];
+        let call_stack = vec![];
         let objects = vec![];
         let arrays = vec![];
         Self {
+            io,
             bytecode,
             stack,
             call_stack,
             objects,
             arrays,
         }
+    }
+    pub fn push_main(&mut self) {
+        let def_id = self.bytecode.main_id.expect("no main definition");
+        self.push_def(def_id);
+    }
+    pub fn push_def(&mut self, def_id: DefId) {
+        let def = self.bytecode.get_def(def_id);
+        let block_id = def.block_id;
+        let frame = StackFrame {
+            block_id,
+            pc: 0,
+            locals: def.initialize_locals(),
+            closures: vec![],
+            frame_with_locals: None,
+            closure_stack: vec![],
+        };
+        self.call_stack.push(frame);
+    }
+    pub fn push_block(&mut self, block_id: BlockId) {
+        let frame = StackFrame {
+            block_id,
+            pc: 0,
+            locals: vec![],
+            closures: vec![],
+            frame_with_locals: None,
+            closure_stack: vec![],
+        };
+        self.call_stack.push(frame);
     }
     pub fn push_string(&mut self, string: &str) -> Result<()> {
         let list_layout_id = self.bytecode.get_list_layout_id();
@@ -294,6 +354,9 @@ impl<'a> VM<'a> {
         self.op_malloc(list_layout_id)?;
         Ok(())
     }
+    pub fn get_io(&self) -> &T {
+        &self.io
+    }
     pub fn run(&mut self) -> Result<()> {
         while let Some(step) = self.next() {
             self.step(&step)?;
@@ -301,6 +364,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
     fn step(&mut self, step: &Step) -> Result<()> {
+        eprintln!("STEP {step:?}");
         match step {
             Step::Op(op) => self.step_op(op),
             Step::Terminator(terminator) => self.step_terminator(terminator),
@@ -354,7 +418,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 }
-impl VM<'_> {
+impl<T: IO> VM<'_, T> {
     fn error(&self, kind: ErrorKind) -> Error {
         let frame = self.call_stack.last().expect("nothing on call stack");
         let source_ref = self
@@ -364,7 +428,9 @@ impl VM<'_> {
         Error { kind, source_ref }
     }
     pub fn pop_raw(&mut self) -> Result<u64> {
-        self.stack.pop().ok_or(self.error(ErrorKind::EmptyStack))
+        self.stack
+            .pop()
+            .ok_or_else(|| self.error(ErrorKind::EmptyStack))
     }
     fn pop(&mut self) -> Result<Value> {
         self.stack
@@ -431,7 +497,7 @@ impl VM<'_> {
         self.stack.len()
     }
 }
-impl VM<'_> {
+impl<T: IO> VM<'_, T> {
     fn op_integer(&mut self, i: u64) {
         self.push(Value::Integer(i as i64));
     }
@@ -710,7 +776,7 @@ impl VM<'_> {
         self.push(value.clone());
         let mut buf = String::new();
         self._format_value(&mut buf, value).unwrap();
-        println!("{buf}");
+        self.io.write(&buf);
         Ok(())
     }
     fn op_layout(&mut self, layout_id: LayoutId) {

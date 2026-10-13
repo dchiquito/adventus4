@@ -18,8 +18,13 @@ pub enum BuiltinType {
     None,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct GenericId(u64);
+impl GenericId {
+    pub fn incr(&self) -> Self {
+        Self(self.0 + 1)
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
@@ -113,64 +118,12 @@ macro_rules! stack_mutation {
         $v.push(Type::Object($layout_id));
         stack_mutation!(expand, $v; $($stack)*);
     };
-    (expand, $v:expr; T($id:tt) $($stack:tt)*) => {
-        $v.push(Type::Generic(GenericId($id)));
+    (expand, $v:expr; T($a:expr) $($stack:tt)*) => {
+        $v.push(Type::Generic($a));
         stack_mutation!(expand, $v; $($stack)*);
     };
 }
 impl StackMutation {
-    // TODO make this mutate
-    fn chain(&self, other: &StackMutation) -> StackMutation {
-        let mut generics: HashMap<GenericId, Type> = HashMap::new();
-        for (lhs, rhs) in self.after.iter().rev().zip(other.before.iter().rev()) {
-            if let Type::Generic(_) = lhs {
-                todo!("generics are not concrete types");
-            } else if let Type::Generic(t) = rhs {
-                if let Some(existing) = generics.get(t) {
-                    todo!("reconcile");
-                } else {
-                    generics.insert(*t, lhs.clone());
-                }
-            } else if lhs != &Type::Unknown && rhs != &Type::Unknown {
-                assert_eq!(
-                    lhs, rhs,
-                    "noooo {self:?}  :::  {other:?}\n{lhs:?} != {rhs:?}"
-                );
-            }
-        }
-        let mut mutation = if self.after.len() >= other.before.len() {
-            //   (a->b c d)
-            // +      (c d->)
-            // = (a->b)
-            let mut after = Vec::from(&self.after[..(self.after.len() - other.before.len())]);
-            after.append(&mut other.after.clone());
-            StackMutation {
-                before: self.before.clone(),
-                after,
-            }
-        } else {
-            //      (a->b)
-            // + (c   b    ->d)
-            // = (c   a    ->d)
-            let mut before = Vec::from(&other.before[..other.before.len() - self.after.len()]);
-            before.append(&mut self.before.clone());
-            let after = other.after.clone();
-            StackMutation { before, after }
-        };
-        {
-            for b in mutation.before.iter_mut() {
-                if let Type::Generic(t) = b {
-                    *b = generics.get(t).expect("undefined generic").clone()
-                }
-            }
-            for a in mutation.after.iter_mut() {
-                if let Type::Generic(t) = a {
-                    *a = generics.get(t).expect("undefined generic").clone()
-                }
-            }
-        }
-        mutation
-    }
     /// Create a new StackMutation representing the union of an initial block state with a new
     /// one. Extend before appropriately, and return an error if after is different.
     fn reconcile(&self, other: &StackMutation) -> Result<StackMutation> {
@@ -219,13 +172,19 @@ impl std::fmt::Debug for StackMutation {
 pub struct Types<'b> {
     bytecode: &'b ByteCode,
     def_types: HashMap<DefId, StackMutation>,
+    current_generic: GenericId,
+    generics: HashMap<GenericId, Type>,
 }
 impl<'b> Types<'b> {
     pub fn new(bytecode: &'b ByteCode) -> Self {
         let def_types = Default::default();
+        let current_generic = Default::default();
+        let generics = Default::default();
         Self {
             bytecode,
             def_types,
+            current_generic,
+            generics,
         }
     }
     pub fn infer(&mut self) {
@@ -334,6 +293,69 @@ impl<'b> Types<'b> {
     fn infer_def(&mut self, def_id: DefId) -> Result<StackMutation> {
         DefInferer::new(self).infer_def(def_id)
     }
+    fn new_generic(&mut self) -> GenericId {
+        let g = self.current_generic.clone();
+        self.current_generic = self.current_generic.incr();
+        g
+    }
+    // TODO make this mutate
+    fn chain(&mut self, left: &StackMutation, right: &StackMutation) -> StackMutation {
+        eprintln!("CHAINING [{left:?}] into [{right:?}]");
+        for (lhs, rhs) in left.after.iter().rev().zip(right.before.iter().rev()) {
+            if let Type::Generic(t) = lhs {
+                if !self.generics.contains_key(t) {
+                    self.generics.insert(*t, lhs.clone());
+                }
+            } else if let Type::Generic(t) = rhs {
+                if !self.generics.contains_key(t) {
+                    self.generics.insert(*t, lhs.clone());
+                }
+            } else if lhs != &Type::Unknown && rhs != &Type::Unknown {
+                assert_eq!(
+                    lhs, rhs,
+                    "noooo {left:?}  :::  {right:?}\n{lhs:?} != {rhs:?}"
+                );
+            }
+        }
+        let mut mutation = if left.after.len() >= right.before.len() {
+            //   (a->b c d)
+            // +      (c d->)
+            // = (a->b)
+            let mut after = Vec::from(&left.after[..(left.after.len() - right.before.len())]);
+            after.append(&mut right.after.clone());
+            StackMutation {
+                before: left.before.clone(),
+                after,
+            }
+        } else {
+            //      (a->b)
+            // + (c   b    ->d)
+            // = (c   a    ->d)
+            let mut before = Vec::from(&right.before[..right.before.len() - left.after.len()]);
+            before.append(&mut left.before.clone());
+            let after = right.after.clone();
+            StackMutation { before, after }
+        };
+        eprintln!("Before: {:?}", mutation.before);
+        eprintln!("After: {:?}", mutation.after);
+        {
+            for b in mutation.before.iter_mut() {
+                if let Type::Generic(t) = b
+                    && let Some(v) = self.generics.get(t)
+                {
+                    *b = v.clone();
+                }
+            }
+            for a in mutation.after.iter_mut() {
+                if let Type::Generic(t) = a
+                    && let Some(v) = self.generics.get(t)
+                {
+                    *a = v.clone();
+                }
+            }
+        }
+        mutation
+    }
 }
 
 struct DefInferer<'a, 'b> {
@@ -368,7 +390,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         for op in block.iter() {
             let sm = self.infer_op(op)?;
             eprintln!("ct {:?} sm {:?} op {:?}", self.current_type, sm, op);
-            self.current_type = self.current_type.chain(&sm);
+            self.current_type = self.types.chain(&self.current_type, &sm);
         }
         match block.terminator {
             Terminator::Return => {
@@ -395,7 +417,9 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             }
             Terminator::GoToIf { then, or_else } => {
                 // Consume the boolean
-                self.current_type = self.current_type.chain(&stack_mutation!(Bool=>));
+                self.current_type = self
+                    .types
+                    .chain(&self.current_type, &stack_mutation!(Bool=>));
                 let mut then_type = self.current_type.clone();
                 if let Some(previous_type) = self.blocks.get(&then) {
                     self.current_type = self.current_type.reconcile(previous_type)?;
@@ -423,9 +447,19 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Character(_) => stack_mutation!(=>Char),
             Op::Call(def_id) => return self.types.type_of_def(def_id).cloned(),
             Op::CallClosure(_closure_id) => stack_mutation!(=>), // TODO
-            Op::Dup => stack_mutation!(T(0)=>T(0) T(0)),
-            Op::Swap => stack_mutation!(T(0) T(1)=>T(1) T(0)),
-            Op::Drop => stack_mutation!(T(0)=>),
+            Op::Dup => {
+                let a = self.types.new_generic();
+                stack_mutation!(T(a)=>T(a) T(a))
+            }
+            Op::Swap => {
+                let a = self.types.new_generic();
+                let b = self.types.new_generic();
+                stack_mutation!(T(a) T(b)=>T(b) T(a))
+            }
+            Op::Drop => {
+                let a = self.types.new_generic();
+                stack_mutation!(T(a)=>)
+            }
             Op::BindLocal(_local_id) => stack_mutation!(Unknown=>),
             Op::PushLocal(_local_id) => stack_mutation!(=>Unknown),
             Op::BindProp(_prop_id) => stack_mutation!(Unknown Unknown=>),
@@ -469,13 +503,17 @@ mod test {
     #[test]
     fn test_chain_stack_mutations() {
         macro_rules! test_stack_mutation{
-            (($($b1:ident) * => $($a1:ident) *) + ($($b2:ident) * => $($a2:ident) *) == ($($b3:ident) * => $($a3:ident) *)) => {
+            (($($b1:ident) * => $($a1:ident) *) + ($($b2:ident) * => $($a2:ident) *) == ($($b3:ident) * => $($a3:ident) *)) => {{
+                let bc = ByteCode::default();
+                let mut types = Types::new(&bc);
             assert_eq!(
-                stack_mutation!($($b1) * => $($a1) *)
-                    .chain(&stack_mutation!($($b2) * => $($a2) *)),
+                types.chain(
+                    &stack_mutation!($($b1) * => $($a1) *),
+                    &stack_mutation!($($b2) * => $($a2) *)
+                ),
                 stack_mutation!($($b3) * => $($a3) *)
             );
-            }
+            }}
         }
         test_stack_mutation!((=>) + (=>) == (=>));
         test_stack_mutation!((Int=>) + (=>) == (Int=>));

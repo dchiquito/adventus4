@@ -12,7 +12,7 @@ use crate::{
         Terminator,
     },
     type_check::{BuiltinType, StackMutation, Type},
-    vm::VM,
+    vm::{TestIO, VM},
 };
 
 include!(concat!(env!("OUT_DIR"), "/grammar_ids.rs"));
@@ -62,8 +62,8 @@ macro_rules! goto_parent {
 
 fn evaluate_at_compile_time(bytecode: &ByteCode, block_id: BlockId) -> u64 {
     // TODO type check before running the VM
-    let def_id = DefId::new(0); // TODO this is wrong
-    let mut vm = VM::new(bytecode, def_id, block_id);
+    let mut vm = VM::new(bytecode, TestIO::new(""));
+    vm.push_block(block_id);
     vm.run().expect("no errors pls");
     assert_eq!(vm.stack_len(), 1);
     vm.pop_raw().unwrap()
@@ -780,6 +780,14 @@ pub fn compile_stdlib(bytecode: &mut ByteCode) {
 #[cfg(test)]
 pub fn compile_test(source: &str) -> ByteCode {
     let mut bytecode = ByteCode::default();
+    Compiler::new(&mut bytecode, "test.adv", source).compile();
+    bytecode
+}
+
+#[cfg(test)]
+pub fn compile_test_stdlib(source: &str) -> ByteCode {
+    let mut bytecode = ByteCode::default();
+    compile_stdlib(&mut bytecode);
     Compiler::new(&mut bytecode, "test.adv", source).compile();
     bytecode
 }

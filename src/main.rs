@@ -4,7 +4,7 @@ use adventus4::{
     bytecode::ByteCode,
     compile::{compile_source, compile_stdlib},
     type_check::Types,
-    vm::VM,
+    vm::{StdIO, VM},
 };
 
 fn main() {
@@ -25,7 +25,8 @@ fn main() {
             buf
         };
         eprintln!("loaded stding [{stdin}]");
-        let mut vm = VM::new_main(&bytecode);
+        let mut vm = VM::new(&bytecode, StdIO::default());
+        vm.push_main();
         vm.push_string(&stdin).expect("failed to load stdin");
         if let Err(e) = vm.run() {
             e.format(&mut std::io::stderr(), &bytecode).unwrap()
