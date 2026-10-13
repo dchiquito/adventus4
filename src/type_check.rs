@@ -239,7 +239,7 @@ impl<'b> Types<'b> {
                     }
                 }
             }
-            println!("Def {def_id:?} has dependencies {dependencies:?}");
+            eprintln!("Def {def_id:?} has dependencies {dependencies:?}");
             graph.insert(def_id, dependencies);
         }
         graph

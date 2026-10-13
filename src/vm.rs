@@ -224,6 +224,7 @@ impl IO for TestIO {
 
     fn write(&mut self, data: &str) {
         self.output.push_str(data);
+        self.output.push('\n');
     }
 }
 

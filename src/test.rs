@@ -23,12 +23,13 @@ macro_rules! no_input {
     };
 }
 
-pub static TEST_CASES: [(usize, TestCase); 5] = [
+pub static TEST_CASES: [(usize, TestCase); 6] = [
     (0, no_input!("def main []", "")),
-    (1, no_input!("def main [0 print]", "0")),
-    (2, no_input!("def main [1 print]", "1")),
-    (3, no_input!("def main ['a' print]", "a")),
-    (4, no_input!("def main [\"abc\" print]", "abc")),
+    (1, no_input!("def main [0 print]", "0\n")),
+    (2, no_input!("def main [1 print]", "1\n")),
+    (3, no_input!("def main ['a' print]", "a\n")),
+    (4, no_input!("def main [\"abc\" print]", "abc\n")),
+    (5, no_input!("def main [0 print 1 print]", "0\n1\n")),
 ];
 
 #[test]

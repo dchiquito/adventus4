@@ -270,7 +270,7 @@ impl Block {
     }
     pub fn pretty_print(&self) {
         for op in self.iter() {
-            println!("  {op:?}",);
+            eprintln!("  {op:?}",);
         }
     }
 }
@@ -432,20 +432,20 @@ impl ByteCode {
     }
     pub fn pretty_print(&self) {
         for (i, block) in self.blocks.iter().enumerate() {
-            println!("Block {i}",);
+            eprintln!("Block {i}",);
             block.pretty_print();
         }
         for (i, def) in self.defs.iter().enumerate() {
             if Some(DefId::new(i as u64)) == self.main_id {
-                println!("main:");
+                eprintln!("main:");
             }
             if let Some(sig) = &def.declared_type {
-                println!(
+                eprintln!(
                     "Definition {i} :({sig:?}) has {:?} ({} locals)",
                     def.block_id, def.local_count
                 );
             } else {
-                println!(
+                eprintln!(
                     "Definition {i} has {:?} ({} locals)",
                     def.block_id, def.local_count
                 );
