@@ -196,7 +196,6 @@ impl<'b> Types<'b> {
         // the declared type of the def.
         for def_id in self.bytecode.iter_def_ids() {
             let t = self.infer_def(def_id);
-            eprintln!("{def_id:?} has type {t:?}!!!\n");
         }
     }
     fn generate_def_dependency_graph(&mut self) -> HashMap<DefId, Vec<DefId>> {
@@ -239,7 +238,6 @@ impl<'b> Types<'b> {
                     }
                 }
             }
-            eprintln!("Def {def_id:?} has dependencies {dependencies:?}");
             graph.insert(def_id, dependencies);
         }
         graph
@@ -300,7 +298,6 @@ impl<'b> Types<'b> {
     }
     // TODO make this mutate
     fn chain(&mut self, left: &StackMutation, right: &StackMutation) -> StackMutation {
-        eprintln!("CHAINING [{left:?}] into [{right:?}]");
         for (lhs, rhs) in left.after.iter().rev().zip(right.before.iter().rev()) {
             if let Type::Generic(t) = lhs {
                 if !self.generics.contains_key(t) {
@@ -336,8 +333,6 @@ impl<'b> Types<'b> {
             let after = right.after.clone();
             StackMutation { before, after }
         };
-        eprintln!("Before: {:?}", mutation.before);
-        eprintln!("After: {:?}", mutation.after);
         {
             for b in mutation.before.iter_mut() {
                 if let Type::Generic(t) = b
@@ -378,18 +373,14 @@ impl<'a, 'b> DefInferer<'a, 'b> {
     }
     fn infer_def(mut self, def_id: DefId) -> Result<StackMutation> {
         let def = self.types.bytecode.get_def(def_id);
-        eprintln!("Inferring def {def:?}");
         self.walk_block(def.block_id)?;
         Ok(self.inferred_type.expect("no return statements"))
     }
     fn walk_block(&mut self, block_id: BlockId) -> Result<()> {
-        eprintln!("Walking {block_id:?}: {:?}", self.current_type);
         self.blocks.insert(block_id, self.current_type.clone());
         let block = self.types.bytecode.get_block(block_id);
-        eprintln!("{:?}", block.pretty_print());
         for op in block.iter() {
             let sm = self.infer_op(op)?;
-            eprintln!("ct {:?} sm {:?} op {:?}", self.current_type, sm, op);
             self.current_type = self.types.chain(&self.current_type, &sm);
         }
         match block.terminator {

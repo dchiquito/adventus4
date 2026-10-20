@@ -10,11 +10,9 @@ fn main() {
         let mut bytecode = ByteCode::default();
         compile_stdlib(&mut bytecode);
         compile_source(&mut bytecode, &in_file);
-        eprintln!("{bytecode:?}");
-        bytecode.pretty_print();
+        // bytecode.pretty_print();
         let mut types = Types::new(&bytecode);
         types.infer();
-        eprintln!("{types:?}");
 
         let mut vm = VM::new(&bytecode, StdIO::default());
         vm.push_main();

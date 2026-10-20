@@ -145,10 +145,8 @@ impl<'s> Compiler<'s> {
     pub fn compile(mut self) {
         let tree = self.parse_tree();
         let root = tree.root_node();
-        eprintln!("{root:?}");
         let mut cursor = root.walk();
         let mut walked = cursor.goto_first_child();
-        eprintln!("{:?}", cursor.node());
         while walked {
             skip_comments!(cursor);
             self.compile_def(&mut cursor);
@@ -164,7 +162,6 @@ impl<'s> Compiler<'s> {
         goto_next_sibling!(cursor);
         let name = &self.source[cursor.node().byte_range()];
         goto_next_sibling!(cursor);
-        eprintln!("\nCompiling def {name}");
 
         let mut closure_vars = vec![];
         while cursor.node().grammar_id() == CLOSURE_VAR {
@@ -193,7 +190,6 @@ impl<'s> Compiler<'s> {
             goto_first_child!(cursor);
             goto_next_sibling!(cursor); // :
             let signature = self.compile_signature(cursor);
-            eprintln!("  {signature:?}");
             self.bytecode.get_def_mut(def_id).declared_type = Some(signature);
             goto_parent!(cursor);
             goto_next_sibling!(cursor);
@@ -233,8 +229,6 @@ impl<'s> Compiler<'s> {
                 let mut def_compiler = DefCompiler::new(self, dummy_def_id, vec![]);
                 let mut block_compiler = BlockCompiler::new(&mut def_compiler, block_id);
                 block_compiler.compile_expression(cursor);
-                eprintln!("bytecode {:?}", self.bytecode);
-                eprintln!("block_id {block_id:?}");
 
                 let raw_layout_id = evaluate_at_compile_time(self.bytecode, block_id);
                 let layout_id = LayoutId::new(raw_layout_id);
@@ -333,7 +327,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_expression(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, EXPRESSION, "expression");
         goto_first_child!(cursor);
-        eprintln!("expression {:?}##", cursor.node().grammar_name());
         match cursor.node().grammar_id() {
             IDENTIFIER => self.compile_identifier(cursor),
             INT => self.compile_int(cursor),
@@ -360,7 +353,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_identifier(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, IDENTIFIER, "identifier");
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("id {string_repr}");
         if let Ok(builtin) = Builtin::try_from(string_repr) {
             if let Some(op) = match builtin {
                 Builtin::Dup => Some(Op::Dup),
@@ -393,7 +385,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 self.push(cursor, op);
             }
         } else if let Some(&def_id) = self.def_compiler.compiler.bytecode.def_ids.get(string_repr) {
-            eprintln!("Looked up {def_id:?}");
             let macro_vars_size = self
                 .def_compiler
                 .compiler
@@ -426,7 +417,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, INT, "int");
         goto_first_child!(cursor);
-        eprintln!("{:?}##int", cursor.node().grammar_name());
         match cursor.node().grammar_id() {
             POSITIVE_INT => self.compile_positive_int(cursor),
             NEGATIVE_INT => self.compile_negative_int(cursor),
@@ -498,7 +488,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_negative_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, NEGATIVE_INT, "negative_int");
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()][1..];
-        eprintln!("-int {:?}", string_repr);
         let int = -string_repr
             .as_bytes()
             .iter()
@@ -510,7 +499,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
     fn compile_positive_int(&mut self, cursor: &mut TreeCursor) {
         assert_node_id!(cursor, POSITIVE_INT, "positive_int");
         let string_repr = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("int {:?}", string_repr);
         let int = string_repr
             .as_bytes()
             .iter()
@@ -529,7 +517,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             cursor.goto_next_sibling();
             skip_comments!(cursor);
         }
-        eprintln!("{:?}", cursor.node());
         assert_node_id!(cursor, SYMBOL_RBRACKET, "symbol_rbracket");
         goto_parent!(cursor);
     }
@@ -540,7 +527,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let mut props = vec![];
         while cursor.node().grammar_id() == IDENTIFIER {
             let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-            eprintln!("Propo {prop_name}");
             let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
             props.push(prop_id);
             goto_next_sibling!(cursor);
@@ -588,7 +574,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_first_child!(cursor);
         goto_next_sibling!(cursor);
         let local_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("  lb {:?}", local_name);
         let local_id = if let Some(id) = self.def_compiler.local_map.get(local_name) {
             *id
         } else {
@@ -618,7 +603,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_first_child!(cursor);
         goto_next_sibling!(cursor);
         let local_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("  lv {:?}", local_name);
         let local_id = self
             .def_compiler
             .local_map
@@ -633,7 +617,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_first_child!(cursor);
         goto_next_sibling!(cursor);
         let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("  ob {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
         self.push(cursor, Op::BindProp(prop_id));
 
@@ -644,7 +627,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_first_child!(cursor);
         goto_next_sibling!(cursor);
         let prop_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("  ov {:?}", prop_name);
         let prop_id = self.def_compiler.compiler.prop_id_for(prop_name);
         self.push(cursor, Op::PushProp(prop_id));
         goto_parent!(cursor);
@@ -654,7 +636,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         goto_first_child!(cursor);
         goto_next_sibling!(cursor);
         let closure_name = &self.def_compiler.compiler.source[cursor.node().byte_range()];
-        eprintln!("  mv {:?}", closure_name);
         let var_id = self.def_compiler.compiler.prop_id_for(closure_name);
         let closure_id = self
             .def_compiler
@@ -701,7 +682,6 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         assert_node_id!(cursor, LOOP, "loop");
         goto_first_child!(cursor);
         goto_next_sibling!(cursor);
-        eprintln!("looperating {:?}", cursor.node());
         // [self.block_id] -> [loop_block_id] -> [finally_block_id]
         let finally_block_id = self.def_compiler.compiler.bytecode.new_block();
         self.def_compiler.loop_stack.push(finally_block_id);
@@ -736,12 +716,8 @@ impl BlockCompiler<'_, '_, '_> {
         let block_id = self.def_compiler.compiler.bytecode.new_block();
         let mut block_compiler = BlockCompiler::new(self.def_compiler, block_id);
         block_compiler.compile_expression(cursor);
-        eprintln!("bytecode {:?}", self.def_compiler.compiler.bytecode);
-        eprintln!("block_id {block_id:?}");
 
-        let layout_id = evaluate_at_compile_time(self.def_compiler.compiler.bytecode, block_id);
-        eprintln!("layout id??? {layout_id}\n\n\n");
-        layout_id
+        evaluate_at_compile_time(self.def_compiler.compiler.bytecode, block_id)
     }
 }
 
