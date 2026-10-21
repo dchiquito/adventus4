@@ -29,6 +29,7 @@ pub enum OpCode {
     Or,
     Not,
     Print,
+    PrintStr,
     ReadLine,
     ObjectId,
     Malloc,
@@ -83,7 +84,8 @@ opcode_u64_conversions!(
     0x47 => Or,
     0x48 => Not,
     0x50 => Print,
-    0x51 => ReadLine,
+    0x51 => PrintStr,
+    0x52 => ReadLine,
     0x60 => ObjectId,
     0x61 => Malloc,
     0x70 => EmptyArray,
@@ -181,6 +183,7 @@ pub enum Op {
     Or,
     Not,
     Print,
+    PrintStr,
     ReadLine,
     Layout(LayoutId),
     Malloc(LayoutId),
@@ -216,6 +219,7 @@ impl From<Op> for OpCode {
             Op::Or => OpCode::Or,
             Op::Not => OpCode::Not,
             Op::Print => OpCode::Print,
+            Op::PrintStr => OpCode::PrintStr,
             Op::ReadLine => OpCode::ReadLine,
             Op::Layout(_) => OpCode::ObjectId,
             Op::Malloc(_) => OpCode::Malloc,
@@ -272,7 +276,7 @@ impl Block {
     pub fn iter(&self) -> BlockIterator<'_> {
         BlockIterator { block: self, pc: 0 }
     }
-    pub fn pretty_print(&self, w: &mut impl Write) -> std::fmt::Result{
+    pub fn pretty_print(&self, w: &mut impl Write) -> std::fmt::Result {
         for op in self.iter() {
             writeln!(w, "  {op:?}",)?;
         }
@@ -324,6 +328,7 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
+            OpCode::PrintStr => Op::PrintStr,
             OpCode::ReadLine => Op::ReadLine,
             OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word())),
             OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word())),
@@ -469,6 +474,8 @@ impl ByteCode {
         //  0: LayoutId
         //  1: [...the layout_id...]
         //  2: Return
+        assert_eq!(list_block.data.len(), 2);
+        assert_eq!(list_block.data[0], OpCode::ObjectId.into());
         LayoutId::new(list_block.data[1])
     }
 }

@@ -29,14 +29,15 @@ macro_rules! no_input {
     };
 }
 
-pub static TEST_CASES: [TestCase; 7] = [
+pub static TEST_CASES: [TestCase; 8] = [
     no_input!("def main []", ""),
     no_input!("def main [0 print]", "0\n"),
     no_input!("def main [1 print]", "1\n"),
     no_input!("def main ['a' print]", "a\n"),
-    no_input!("def main [\"abc\" print]", "abc\n"),
+    no_input!("def main [\"abc\" print]", "[a, b, c]\n"),
+    no_input!("def main [\"abc\" print_str]", "abc\n"),
     no_input!("def main [0 print 1 print]", "0\n1\n"),
-    with_input!("def main [read_line print]", "Hello", "Hello"),
+    with_input!("def main [read_line print_str]", "Hello", "Hello\n"),
 ];
 
 #[test]
@@ -75,12 +76,19 @@ fn run_test_cases_cli() {
             .stdout(Stdio::piped())
             .spawn()
             .expect("error starting cargo");
-        let mut stdin = child.stdin.take().expect("error grabbing input");
-        stdin
-            .write_all(test_case.input.as_bytes())
-            .expect("error writing input");
+        {
+            let mut stdin = child.stdin.take().expect("error grabbing input");
+            stdin
+                .write_all(test_case.input.as_bytes())
+                .expect("error writing input");
+            // Drop stdin here
+        }
         let status = child.wait().expect("error waiting for child");
-        assert!(status.success(), "test case #{index} failed");
+        assert!(
+            status.success(),
+            "test case #{index} failed:\n{}",
+            test_case.source
+        );
         let actual_output = {
             let mut actual_output = String::new();
             let mut stdout = child.stdout.take().expect("error grabbing stdout");

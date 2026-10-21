@@ -1,10 +1,5 @@
 use crate::source;
-use std::{
-    fmt::Write,
-    io::{BufRead, BufReader, Read},
-    ops::Range,
-    slice::Iter,
-};
+use std::{fmt::Write, io::BufRead, ops::Range, slice::Iter};
 
 use crate::bytecode::{
     BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
@@ -199,7 +194,12 @@ pub trait IO {
 pub struct StdIO {}
 impl IO for StdIO {
     fn read_line(&mut self) -> Vec<u64> {
-        todo!()
+        let mut buf = String::new();
+        {
+            let mut stdin = std::io::stdin().lock();
+            stdin.read_line(&mut buf).expect("error reading stdin");
+        }
+        buf.chars().map(|c| Value::Char(c as u8).into()).collect()
     }
 
     fn write(&mut self, data: &str) {
@@ -220,7 +220,7 @@ impl<'a> StringReader<'a> {
     fn read_line(&mut self) -> Vec<u64> {
         let mut buf = vec![];
         for x in self.iter.by_ref() {
-            buf.push(*x as u64);
+            buf.push(Value::Char(*x).into());
             if *x == b'\n' {
                 return buf;
             }
@@ -308,6 +308,7 @@ impl<T: IO> Iterator for VM<'_, T> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
+            OpCode::PrintStr => Op::PrintStr,
             OpCode::ReadLine => Op::ReadLine,
             OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word()?)),
             OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word()?)),
@@ -425,6 +426,7 @@ impl<'a, T: IO> VM<'a, T> {
             Op::Or => self.op_or()?,
             Op::Not => self.op_not()?,
             Op::Print => self.op_print()?,
+            Op::PrintStr => self.op_print_str()?,
             Op::ReadLine => self.op_read_line()?,
             Op::Layout(layout_id) => self.op_layout(layout_id),
             Op::Malloc(layout_id) => self.op_malloc(layout_id)?,
@@ -694,6 +696,42 @@ impl<T: IO> VM<'_, T> {
         self.push(Value::Bool(!a));
         Ok(())
     }
+    fn _format_string(&self, w: &mut impl Write, value: Value) -> std::fmt::Result {
+        if let Value::ObjectRef(obj_ref) = value {
+            let obj = &self.objects[obj_ref];
+            // Look up the layout_id for List
+            let list_layout_id = self.bytecode.get_list_layout_id();
+            // If the object is a list, print only the internal arr
+            if obj.layout_id == list_layout_id {
+                let arr = Value::try_from(obj.props[0]).expect("invalid value");
+                let len = Value::try_from(obj.props[2]).expect("invalid value");
+                if let Value::ArrayRef(array_ref) = arr
+                    && let Value::Integer(len) = len
+                {
+                    let len = len as usize;
+                    let array = &self.arrays[array_ref];
+                    for c in array
+                        .elements
+                        .iter()
+                        .take(len)
+                        .copied()
+                        .map(Value::try_from)
+                        .map(|v| {
+                            if let Ok(Value::Char(c)) = v {
+                                c
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                    {
+                        write!(w, "{}", c as char)?
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        panic!("not a string: {value:?}")
+    }
     fn _format_value(&self, w: &mut impl Write, value: Value) -> std::fmt::Result {
         match value {
             Value::Bool(b) => write!(w, "{b}")?,
@@ -712,49 +750,19 @@ impl<T: IO> VM<'_, T> {
                     {
                         let len = len as usize;
                         let array = &self.arrays[array_ref];
-                        // If the array contains only characters, render it as a string
-                        if array
-                            .elements
-                            .iter()
-                            .take(len)
-                            .copied()
-                            .map(Value::try_from)
-                            .all(|v| matches!(v, Ok(Value::Char(_))))
-                        {
-                            for c in array
-                                .elements
-                                .iter()
-                                .take(len)
-                                .copied()
-                                .map(Value::try_from)
-                                .map(|v| {
-                                    if let Ok(Value::Char(c)) = v {
-                                        c
-                                    } else {
-                                        unreachable!()
-                                    }
-                                })
-                            {
-                                write!(w, "{}", c as char)?
-                            }
-                        } else {
-                            let mut elements = array.elements.iter().take(len);
-                            write!(w, "[")?;
-                            if let Some(first) = elements.next() {
+                        let mut elements = array.elements.iter().take(len);
+                        write!(w, "[")?;
+                        if let Some(first) = elements.next() {
+                            self._format_value(w, Value::try_from(*first).expect("invalid value"))?;
+                            for element in elements {
+                                write!(w, ", ",)?;
                                 self._format_value(
                                     w,
-                                    Value::try_from(*first).expect("invalid value"),
+                                    Value::try_from(*element).expect("invalid value"),
                                 )?;
-                                for element in elements {
-                                    write!(w, ", ",)?;
-                                    self._format_value(
-                                        w,
-                                        Value::try_from(*element).expect("invalid value"),
-                                    )?;
-                                }
                             }
-                            write!(w, "]")?;
                         }
+                        write!(w, "]")?;
                         return Ok(());
                     } else {
                         unreachable!("list prop types are incorrect")
@@ -796,7 +804,7 @@ impl<T: IO> VM<'_, T> {
                 }
                 write!(w, "]")?;
             }
-            Value::LayoutId(id) => write!(w, "LayouId({id})")?,
+            Value::LayoutId(id) => write!(w, "LayoutId({id})")?,
         }
         Ok(())
     }
@@ -807,12 +815,24 @@ impl<T: IO> VM<'_, T> {
         self.io.write(&buf);
         Ok(())
     }
+    fn op_print_str(&mut self) -> Result<()> {
+        let value = self.pop()?;
+        let mut buf = String::new();
+        self._format_string(&mut buf, value).unwrap();
+        self.io.write(&buf);
+        Ok(())
+    }
     fn op_read_line(&mut self) -> Result<()> {
         let line = self.io.read_line();
+        let len = line.len();
         let array = Array { elements: line };
         let arr_id = Value::ArrayRef(self.arrays.len());
         self.arrays.push(array);
         self.push(arr_id);
+        self.push(Value::Integer(len as i64));
+        self.push(Value::Integer(len as i64));
+        let layout_id = self.bytecode.get_list_layout_id();
+        self.op_malloc(layout_id)?;
         Ok(())
     }
     fn op_layout(&mut self, layout_id: LayoutId) {
