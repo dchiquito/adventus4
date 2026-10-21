@@ -1,5 +1,6 @@
 cov:
-	cargo llvm-cov --html
+	cargo llvm-cov --html \
+		|| rm default_*.profraw
 tree-sitter: 
 	cd tree-sitter-adventus \
 		&& tree-sitter generate

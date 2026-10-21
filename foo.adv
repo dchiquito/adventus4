@@ -1,5 +1,1 @@
-def main [
-  "Hello, world"
-  [dup '!' push]
-  print
-]
+def main []

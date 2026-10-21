@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use log::trace;
+
 use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId, Terminator};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -124,9 +126,11 @@ macro_rules! stack_mutation {
     };
 }
 impl StackMutation {
-    /// Create a new StackMutation representing the union of an initial block state with a new
-    /// one. Extend before appropriately, and return an error if after is different.
+    /// Create a new StackMutation representing the union of an initial block state
+    /// with a new one. Extend before appropriately, and return an error if after
+    /// is different.
     fn reconcile(&self, other: &StackMutation) -> Result<StackMutation> {
+        trace!("hmmmmm {:?} :: {:?}", self, other);
         let before = {
             let (shorter, longer) = if self.before.len() <= other.before.len() {
                 (&self.before, &other.before)
@@ -143,6 +147,7 @@ impl StackMutation {
         };
         let after = {
             if self.after.len() != other.after.len() {
+                panic!("{:?} != {:?}", self.after, other.after);
                 Err(Error::Foo)?
             } else {
                 self.after
@@ -187,7 +192,7 @@ impl<'b> Types<'b> {
             generics,
         }
     }
-    pub fn infer(&mut self) {
+    pub fn infer(&mut self) -> Result<()> {
         {
             let graph = self.generate_def_dependency_graph();
             self.check_for_def_dependency_loops(graph);
@@ -195,8 +200,9 @@ impl<'b> Types<'b> {
         // At this point, we can be sure that any def dependency loops can be broken by using
         // the declared type of the def.
         for def_id in self.bytecode.iter_def_ids() {
-            self.infer_def(def_id).expect("no errors");
+            self.infer_def(def_id)?;
         }
+        Ok(())
     }
     fn generate_def_dependency_graph(&mut self) -> HashMap<DefId, Vec<DefId>> {
         let mut graph = HashMap::new();
@@ -372,11 +378,20 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         }
     }
     fn infer_def(mut self, def_id: DefId) -> Result<StackMutation> {
+        let name = self
+            .types
+            .bytecode
+            .def_ids
+            .iter()
+            .find(|(_, v)| **v == def_id)
+            .map(|(k, _)| k);
+        trace!("Inferring def {name:?} ({def_id:?})");
         let def = self.types.bytecode.get_def(def_id);
         self.walk_block(def.block_id)?;
         Ok(self.inferred_type.expect("no return statements"))
     }
     fn walk_block(&mut self, block_id: BlockId) -> Result<()> {
+        trace!("Inferring block {block_id:?}");
         self.blocks.insert(block_id, self.current_type.clone());
         let block = self.types.bytecode.get_block(block_id);
         for op in block.iter() {
@@ -437,7 +452,14 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Integer(_) => stack_mutation!(=>Int),
             Op::Character(_) => stack_mutation!(=>Char),
             Op::Call(def_id) => return self.types.type_of_def(def_id).cloned(),
-            Op::CallClosure(_closure_id) => stack_mutation!(=>), // TODO
+            Op::CallClosure(_closure_id) => {
+                // TODO Apply a placeholder mutation.
+                // The stack could be in any state after calling a closure.
+                // It will only be known when the current definition is called.
+                // All we know for sure is that the closure must chain cleanly
+                // from `self.after`
+                stack_mutation!(=>)
+            }
             Op::Dup => {
                 let a = self.types.new_generic();
                 stack_mutation!(T(a)=>T(a) T(a))
@@ -468,9 +490,12 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::And => stack_mutation!(Bool Bool=>Bool),
             Op::Or => stack_mutation!(Bool Bool=>Bool),
             Op::Not => stack_mutation!(Bool=>Bool),
-            Op::Print => stack_mutation!(Unknown=>Unknown),
-            Op::PrintStr => stack_mutation!(Unknown=>Unknown),
-            Op::ReadLine => stack_mutation!(=>Unknown),
+            Op::Print => stack_mutation!(Unknown=>),
+            Op::PrintStr => stack_mutation!(Unknown=>),
+            Op::ReadLine => {
+                let layout_id = self.types.bytecode.get_list_layout_id();
+                stack_mutation!(=>Object(layout_id))
+            }
             Op::Layout(layout_id) => stack_mutation!(=>Object(layout_id)),
             Op::Malloc(layout_id) => {
                 let mut sm = stack_mutation!(=>Object(layout_id));
@@ -526,7 +551,7 @@ mod test {
         ($source:expr) => {{
             let bytecode = compile_test($source);
             let mut types = Types::new(&bytecode);
-            types.infer();
+            let _ = types.infer();
             bytecode
                 .iter_def_ids()
                 .map(|def_id| types.type_of_def(def_id).cloned())
@@ -537,7 +562,7 @@ mod test {
         ($source:expr) => {{
             let bytecode = compile_test($source);
             let mut types = Types::new(&bytecode);
-            types.infer();
+            types.infer().expect("no errors");
             bytecode
                 .iter_def_ids()
                 .map(|def_id| types.type_of_def(def_id).cloned().unwrap())
