@@ -1,3 +1,5 @@
+cov:
+	cargo llvm-cov --html
 tree-sitter: 
 	cd tree-sitter-adventus \
 		&& tree-sitter generate
