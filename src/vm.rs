@@ -478,15 +478,15 @@ impl<T: IO> VM<'_, T> {
             })),
         }
     }
-    fn pop_char(&mut self) -> Result<u8> {
-        match self.pop()? {
-            Value::Char(c) => Ok(c),
-            v => Err(self.error(ErrorKind::TypeMismatch {
-                expected: Value::Char(0),
-                actual: v,
-            })),
-        }
-    }
+    // fn pop_char(&mut self) -> Result<u8> {
+    //     match self.pop()? {
+    //         Value::Char(c) => Ok(c),
+    //         v => Err(self.error(ErrorKind::TypeMismatch {
+    //             expected: Value::Char(0),
+    //             actual: v,
+    //         })),
+    //     }
+    // }
     fn pop_integer(&mut self) -> Result<i64> {
         match self.pop()? {
             Value::Integer(i) => Ok(i),

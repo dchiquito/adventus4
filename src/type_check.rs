@@ -195,7 +195,7 @@ impl<'b> Types<'b> {
         // At this point, we can be sure that any def dependency loops can be broken by using
         // the declared type of the def.
         for def_id in self.bytecode.iter_def_ids() {
-            let t = self.infer_def(def_id);
+            self.infer_def(def_id).expect("no errors");
         }
     }
     fn generate_def_dependency_graph(&mut self) -> HashMap<DefId, Vec<DefId>> {
