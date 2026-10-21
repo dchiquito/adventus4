@@ -33,3 +33,10 @@ def push [
   $list.arr $list.len $value array_set
   $list.len 1 + $list>.len
 ]
+def iter @body [
+  dup.len range [
+    >$i
+    dup.arr $i get
+    @body
+  ]
+]
