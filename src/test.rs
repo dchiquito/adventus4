@@ -13,23 +13,30 @@ pub struct TestCase {
     output: &'static str,
 }
 
-macro_rules! no_input {
-    ($source:expr, $output:expr) => {
+macro_rules! with_input {
+    ($source:expr, $input:expr, $output:expr) => {
         TestCase {
             source: $source,
-            input: "",
+            input: $input,
             output: $output,
         }
     };
 }
 
-pub static TEST_CASES: [TestCase; 6] = [
+macro_rules! no_input {
+    ($source:expr, $output:expr) => {
+        with_input!($source, "", $output)
+    };
+}
+
+pub static TEST_CASES: [TestCase; 7] = [
     no_input!("def main []", ""),
     no_input!("def main [0 print]", "0\n"),
     no_input!("def main [1 print]", "1\n"),
     no_input!("def main ['a' print]", "a\n"),
     no_input!("def main [\"abc\" print]", "abc\n"),
     no_input!("def main [0 print 1 print]", "0\n1\n"),
+    with_input!("def main [read_line print]", "Hello", "Hello"),
 ];
 
 #[test]

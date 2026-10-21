@@ -469,6 +469,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Or => stack_mutation!(Bool Bool=>Bool),
             Op::Not => stack_mutation!(Bool=>Bool),
             Op::Print => stack_mutation!(Unknown=>Unknown),
+            Op::ReadLine => stack_mutation!(=>Unknown),
             Op::Layout(layout_id) => stack_mutation!(=>Object(layout_id)),
             Op::Malloc(layout_id) => {
                 let mut sm = stack_mutation!(=>Object(layout_id));

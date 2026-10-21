@@ -1,5 +1,10 @@
 use crate::source;
-use std::{fmt::Write, ops::Range};
+use std::{
+    fmt::Write,
+    io::{BufRead, BufReader, Read},
+    ops::Range,
+    slice::Iter,
+};
 
 use crate::bytecode::{
     BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
@@ -186,14 +191,14 @@ struct StackFrame {
 }
 
 pub trait IO {
-    fn read(&mut self) -> &[u64];
+    fn read_line(&mut self) -> Vec<u64>;
     fn write(&mut self, data: &str);
 }
 
 #[derive(Default)]
 pub struct StdIO {}
 impl IO for StdIO {
-    fn read(&mut self) -> &[u64] {
+    fn read_line(&mut self) -> Vec<u64> {
         todo!()
     }
 
@@ -202,14 +207,36 @@ impl IO for StdIO {
     }
 }
 
-pub struct TestIO {
-    input: String,
+struct StringReader<'a> {
+    iter: Iter<'a, u8>,
+}
+
+impl<'a> StringReader<'a> {
+    pub fn new(data: &'a str) -> Self {
+        Self {
+            iter: data.as_bytes().iter(),
+        }
+    }
+    fn read_line(&mut self) -> Vec<u64> {
+        let mut buf = vec![];
+        for x in self.iter.by_ref() {
+            buf.push(*x as u64);
+            if *x == b'\n' {
+                return buf;
+            }
+        }
+        buf
+    }
+}
+pub struct TestIO<'a> {
+    input_buffer: StringReader<'a>,
     output: String,
 }
-impl TestIO {
-    pub fn new(input: &str) -> Self {
+impl<'a> TestIO<'a> {
+    pub fn new(input: &'a str) -> Self {
+        let input_buffer = StringReader::new(input);
         Self {
-            input: input.to_string(),
+            input_buffer,
             output: String::new(),
         }
     }
@@ -217,9 +244,9 @@ impl TestIO {
         &self.output
     }
 }
-impl IO for TestIO {
-    fn read(&mut self) -> &[u64] {
-        todo!()
+impl IO for TestIO<'_> {
+    fn read_line(&mut self) -> Vec<u64> {
+        self.input_buffer.read_line()
     }
 
     fn write(&mut self, data: &str) {
@@ -281,6 +308,7 @@ impl<T: IO> Iterator for VM<'_, T> {
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
             OpCode::Print => Op::Print,
+            OpCode::ReadLine => Op::ReadLine,
             OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word()?)),
             OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word()?)),
             OpCode::EmptyArray => Op::EmptyArray,
@@ -397,6 +425,7 @@ impl<'a, T: IO> VM<'a, T> {
             Op::Or => self.op_or()?,
             Op::Not => self.op_not()?,
             Op::Print => self.op_print()?,
+            Op::ReadLine => self.op_read_line()?,
             Op::Layout(layout_id) => self.op_layout(layout_id),
             Op::Malloc(layout_id) => self.op_malloc(layout_id)?,
             Op::EmptyArray => self.op_empty_array()?,
@@ -776,6 +805,14 @@ impl<T: IO> VM<'_, T> {
         let mut buf = String::new();
         self._format_value(&mut buf, value).unwrap();
         self.io.write(&buf);
+        Ok(())
+    }
+    fn op_read_line(&mut self) -> Result<()> {
+        let line = self.io.read_line();
+        let array = Array { elements: line };
+        let arr_id = Value::ArrayRef(self.arrays.len());
+        self.arrays.push(array);
+        self.push(arr_id);
         Ok(())
     }
     fn op_layout(&mut self, layout_id: LayoutId) {

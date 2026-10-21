@@ -77,6 +77,7 @@ enum Builtin {
     Or,
     Not,
     Print,
+    ReadLine,
     Break,
     Return,
     EmptyArray,
@@ -95,6 +96,7 @@ impl TryFrom<&str> for Builtin {
             "or" => Builtin::Or,
             "not" => Builtin::Not,
             "print" => Builtin::Print,
+            "read_line" => Builtin::ReadLine,
             "break" => Builtin::Break,
             "return" => Builtin::Return,
             "empty_array" => Builtin::EmptyArray,
@@ -362,6 +364,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 Builtin::Or => Some(Op::Or),
                 Builtin::Not => Some(Op::Not),
                 Builtin::Print => Some(Op::Print),
+                Builtin::ReadLine => Some(Op::ReadLine),
                 Builtin::Break => {
                     self.set_terminator(Terminator::GoTo(
                         *self
