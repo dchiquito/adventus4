@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+env_logger = "0.11.11"
+log = "0.4.34"
 tree-sitter = "0.26.12"
 tree-sitter-adventus = { version = "0.1.0", path = "tree-sitter-adventus" }
 

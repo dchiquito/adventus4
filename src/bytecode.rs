@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range};
+use std::{collections::HashMap, fmt::Write, ops::Range};
 
 use crate::type_check::StackMutation;
 
@@ -268,10 +268,11 @@ impl Block {
     pub fn iter(&self) -> BlockIterator<'_> {
         BlockIterator { block: self, pc: 0 }
     }
-    pub fn pretty_print(&self) {
+    pub fn pretty_print(&self, w: &mut impl Write) -> std::fmt::Result{
         for op in self.iter() {
-            eprintln!("  {op:?}",);
+            writeln!(w, "  {op:?}",)?;
         }
+        Ok(())
     }
 }
 pub struct BlockIterator<'a> {
@@ -430,27 +431,30 @@ impl ByteCode {
     pub fn iter_def_ids(&self) -> impl Iterator<Item = DefId> {
         (0..self.defs.len()).map(|i| DefId::new(i as u64))
     }
-    pub fn pretty_print(&self) {
+    pub fn pretty_print(&self, w: &mut impl Write) -> std::fmt::Result {
         for (i, block) in self.blocks.iter().enumerate() {
-            eprintln!("Block {i}",);
-            block.pretty_print();
+            writeln!(w, "Block {i}")?;
+            block.pretty_print(w)?;
         }
         for (i, def) in self.defs.iter().enumerate() {
             if Some(DefId::new(i as u64)) == self.main_id {
-                eprintln!("main:");
+                writeln!(w, "main:")?;
             }
             if let Some(sig) = &def.declared_type {
-                eprintln!(
+                writeln!(
+                    w,
                     "Definition {i} :({sig:?}) has {:?} ({} locals)",
                     def.block_id, def.local_count
-                );
+                )?;
             } else {
-                eprintln!(
+                writeln!(
+                    w,
                     "Definition {i} has {:?} ({} locals)",
                     def.block_id, def.local_count
-                );
+                )?;
             }
         }
+        Ok(())
     }
     pub fn get_list_layout_id(&self) -> LayoutId {
         let list_def_id = *self.def_ids.get("List").expect("stdlib not loaded");

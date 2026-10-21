@@ -6,11 +6,17 @@ use adventus4::{
 };
 
 fn main() {
+    env_logger::init();
+
     if let Some(in_file) = std::env::args().nth(1) {
         let mut bytecode = ByteCode::default();
         compile_stdlib(&mut bytecode);
         compile_source(&mut bytecode, &in_file);
-        // bytecode.pretty_print();
+        {
+            let mut buf = String::new();
+            bytecode.pretty_print(&mut buf).unwrap();
+            log::debug!("{buf}");
+        }
         let mut types = Types::new(&bytecode);
         types.infer();
 
@@ -20,6 +26,4 @@ fn main() {
             e.format(&mut std::io::stderr(), &bytecode).unwrap()
         }
     }
-    // let root_node = tree.root_node();
-    // eprintln!("{root_node:?}")
 }
