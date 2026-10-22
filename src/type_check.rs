@@ -18,6 +18,7 @@ pub enum BuiltinType {
     Char,
     Bool,
     None,
+    DefId,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
@@ -110,6 +111,10 @@ macro_rules! stack_mutation {
     };
     (expand, $v:expr; None $($stack:tt)*) => {
         $v.push(Type::Builtin(BuiltinType::None));
+        stack_mutation!(expand, $v; $($stack)*);
+    };
+    (expand, $v:expr; DefId $($stack:tt)*) => {
+        $v.push(Type::Builtin(BuiltinType::DefId));
         stack_mutation!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Unknown $($stack:tt)*) => {
@@ -275,6 +280,7 @@ impl<'b> Types<'b> {
             check_def(&graph, &mut stack, &mut checked, *root_def_id);
         }
     }
+    /// Get the cached type of a def, or infer it if it is not yet cached.
     fn type_of_def(&mut self, def_id: DefId) -> Result<&StackMutation> {
         // First, check the precomputed cache
         if self.def_types.contains_key(&def_id) {
@@ -294,6 +300,7 @@ impl<'b> Types<'b> {
             Ok(self.def_types.get(&def_id).unwrap())
         }
     }
+    /// Infer the type of a def.
     fn infer_def(&mut self, def_id: DefId) -> Result<StackMutation> {
         DefInferer::new(self).infer_def(def_id)
     }
@@ -302,7 +309,6 @@ impl<'b> Types<'b> {
         self.current_generic = self.current_generic.incr();
         g
     }
-    // TODO make this mutate
     fn chain(&mut self, left: &StackMutation, right: &StackMutation) -> StackMutation {
         for (lhs, rhs) in left.after.iter().rev().zip(right.before.iter().rev()) {
             if let Type::Generic(t) = lhs {
@@ -385,8 +391,15 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             .iter()
             .find(|(_, v)| **v == def_id)
             .map(|(k, _)| k);
-        trace!("Inferring def {name:?} ({def_id:?})");
         let def = self.types.bytecode.get_def(def_id);
+        trace!(
+            "Inferring def {name:?} ({def_id:?}) ({:?} closures)",
+            def.closure_count
+        );
+        if def.closure_count > 0 {
+            log::debug!("Skipping due to closures");
+            return Ok(stack_mutation!(=>));
+        }
         self.walk_block(def.block_id)?;
         Ok(self.inferred_type.expect("no return statements"))
     }
@@ -457,9 +470,11 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 // The stack could be in any state after calling a closure.
                 // It will only be known when the current definition is called.
                 // All we know for sure is that the closure must chain cleanly
-                // from `self.after`
+                // from `self.after`.
+                // We should save that fact in the DefInferer for later.
                 stack_mutation!(=>)
             }
+            Op::ClosureDefId(def_id) => stack_mutation!(=>DefId),
             Op::Dup => {
                 let a = self.types.new_generic();
                 stack_mutation!(T(a)=>T(a) T(a))

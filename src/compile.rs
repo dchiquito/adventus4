@@ -412,7 +412,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 self.def_compiler.compile_closure(cursor, closure_block_id);
                 // Encode the def_ids of the closures as literals on the stack.
                 // The VM will retrieve them when the def is called.
-                self.push(cursor, Op::Integer(closure_def_id.to_value()));
+                self.push(cursor, Op::ClosureDefId(closure_def_id));
                 goto_first_child!(cursor);
             }
             self.push(cursor, Op::Call(def_id));

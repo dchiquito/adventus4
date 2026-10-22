@@ -86,6 +86,7 @@ pub enum Value {
     ObjectRef(usize),
     ArrayRef(usize),
     LayoutId(u64),
+    ClosureDefId(DefId),
 }
 impl TryFrom<u64> for Value {
     type Error = ErrorKind;
@@ -107,6 +108,7 @@ impl TryFrom<u64> for Value {
             0b1000 => Self::ObjectRef(stripped_value as usize),
             0b1001 => Self::ArrayRef(stripped_value as usize),
             0b1010 => Self::LayoutId(stripped_value),
+            0b1011 => Self::ClosureDefId(DefId::new(stripped_value)),
             0b10000..=u64::MAX => unreachable!(),
             _ => return Err(ErrorKind::ValueEncoding(value)),
         })
@@ -140,6 +142,11 @@ impl From<Value> for u64 {
             Value::LayoutId(id) => {
                 assert_eq!(id >> 60, 0);
                 id ^ (0b1010 << 60)
+            }
+            Value::ClosureDefId(id) => {
+                let id = id.to_value();
+                assert_eq!(id >> 60, 0);
+                id ^ (0b1011 << 60)
             }
         }
     }
@@ -287,6 +294,7 @@ impl<T: IO> Iterator for VM<'_, T> {
             OpCode::Character => Op::Character(self.next_word()? as u8),
             OpCode::Call => Op::Call(DefId::new(self.next_word()?)),
             OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word()?)),
+            OpCode::ClosureDefId => Op::ClosureDefId(DefId::new(self.next_word()?)),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Drop => Op::Drop,
@@ -405,6 +413,7 @@ impl<'a, T: IO> VM<'a, T> {
             Op::Character(c) => self.op_character(c),
             Op::Call(def_id) => self.op_call(def_id)?,
             Op::CallClosure(closure_id) => self.op_call_closure(closure_id),
+            Op::ClosureDefId(def_id) => self.op_closure_def_id(def_id),
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap()?,
             Op::Drop => self.op_drop()?,
@@ -496,6 +505,15 @@ impl<T: IO> VM<'_, T> {
             })),
         }
     }
+    fn pop_closure_def_id(&mut self) -> Result<DefId> {
+        match self.pop()? {
+            Value::ClosureDefId(def_id) => Ok(def_id),
+            v => Err(self.error(ErrorKind::TypeMismatch {
+                expected: Value::ClosureDefId(DefId::new(0)),
+                actual: v,
+            })),
+        }
+    }
     fn pop_index(&mut self) -> Result<usize> {
         let index = self.pop_integer()?;
         if index < 0 {
@@ -539,8 +557,7 @@ impl<T: IO> VM<'_, T> {
         let def = self.bytecode.get_def(def_id);
         let mut closures = vec![];
         for _ in 0..def.closure_count {
-            // TODO encode as something better
-            let closure_def_id = DefId::new(self.pop_integer()? as u64);
+            let closure_def_id = self.pop_closure_def_id()?;
             closures.push(closure_def_id);
         }
         let frame = StackFrame {
@@ -567,6 +584,9 @@ impl<T: IO> VM<'_, T> {
         frame.pc = 0;
         frame.closure_stack.push(closure_frame);
         frame.frame_with_locals = Some(call_stack_len - 1);
+    }
+    fn op_closure_def_id(&mut self, def_id: DefId) {
+        self.push(Value::ClosureDefId(def_id));
     }
     fn op_dup(&mut self) {
         let peek = *self.stack.last().unwrap();
@@ -805,6 +825,7 @@ impl<T: IO> VM<'_, T> {
                 write!(w, "]")?;
             }
             Value::LayoutId(id) => write!(w, "LayoutId({id})")?,
+            Value::ClosureDefId(id) => write!(w, "ClosureDefId({id:?})")?,
         }
         Ok(())
     }
