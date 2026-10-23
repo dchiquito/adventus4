@@ -1,3 +1,5 @@
+use log::trace;
+
 use crate::source;
 use std::{fmt::Write, io::BufRead, ops::Range, slice::Iter};
 
@@ -408,6 +410,7 @@ impl<'a, T: IO> VM<'a, T> {
         }
     }
     fn step_op(&mut self, op: &Op) -> Result<()> {
+        trace!("Step: {op:?}");
         match *op {
             Op::Integer(i) => self.op_integer(i),
             Op::Character(c) => self.op_character(c),
@@ -555,11 +558,15 @@ impl<T: IO> VM<'_, T> {
     }
     fn op_call(&mut self, def_id: DefId) -> Result<()> {
         let def = self.bytecode.get_def(def_id);
-        let mut closures = vec![];
+        let mut closures = Vec::with_capacity(def.closure_count);
         for _ in 0..def.closure_count {
             let closure_def_id = self.pop_closure_def_id()?;
             closures.push(closure_def_id);
         }
+        // Consider `def foo @a @b @c [...]`
+        // The stack will contain [..., @a, @b, @c], so the def_ids will be popped
+        // in reverse order. Reverse them again to get the correct order back.
+        closures.reverse();
         let frame = StackFrame {
             block_id: def.block_id,
             pc: 0,

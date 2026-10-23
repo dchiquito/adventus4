@@ -29,7 +29,7 @@ macro_rules! no_input {
     };
 }
 
-pub static TEST_CASES: [TestCase; 8] = [
+pub static TEST_CASES: [TestCase; 11] = [
     no_input!("def main []", ""),
     no_input!("def main [0 print]", "0\n"),
     no_input!("def main [1 print]", "1\n"),
@@ -38,6 +38,12 @@ pub static TEST_CASES: [TestCase; 8] = [
     no_input!("def main [\"abc\" print_str]", "abc\n"),
     no_input!("def main [0 print 1 print]", "0\n1\n"),
     with_input!("def main [read_line print_str]", "Hello", "Hello\n"),
+    no_input!("def foo @bar [@bar] def main [foo 1 print]", "1\n"),
+    no_input!("def foo @bar @baz [@bar] def main [foo 1 2 print]", "1\n"),
+    no_input!(
+        "def foo @bar @baz [@bar @baz] def main [foo 1 print]",
+        "1\n"
+    ),
 ];
 
 #[test]
