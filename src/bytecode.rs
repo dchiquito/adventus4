@@ -285,6 +285,7 @@ impl Block {
         for op in self.iter() {
             writeln!(w, "  {op:?}",)?;
         }
+        writeln!(w, "  {:?}", self.terminator)?;
         Ok(())
     }
 }
