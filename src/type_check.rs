@@ -8,7 +8,8 @@ use crate::bytecode::{
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
-    Foo,
+    CannotUnite(Type, Type),
+    CannotReconcile(StackMutation, StackMutation),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -50,7 +51,7 @@ impl Type {
         } else if other == &Type::Unknown {
             Ok(self.clone())
         } else {
-            Err(Error::Foo)
+            Err(Error::CannotUnite(self.clone(), other.clone()))
         }
     }
 }
@@ -159,8 +160,7 @@ impl StackMutation {
         };
         let after = {
             if self.after.len() != other.after.len() {
-                // panic!("{:?} != {:?}", self.after, other.after);
-                Err(Error::Foo)?
+                Err(Error::CannotReconcile(self.clone(), other.clone()))?
             } else {
                 self.after
                     .iter()
@@ -213,7 +213,7 @@ impl<'b> Types<'b> {
         // the declared type of the def.
         for def_id in self.bytecode.iter_def_ids() {
             trace!("Beginning inference of {def_id:?}");
-            let inferred_type = DefInferer::infer(self, def_id)?;
+            let _inferred_type = DefInferer::infer(self, def_id)?;
         }
         Ok(())
     }
@@ -380,7 +380,7 @@ struct DefInferer<'a, 'b> {
     closures: Vec<StackMutation>,
     blocks: HashMap<BlockId, StackMutation>,
     current_type: StackMutation,
-    inferred_type: Option<StackMutation>,
+    return_type: Option<StackMutation>,
 }
 impl<'a, 'b> DefInferer<'a, 'b> {
     fn infer(types: &'a mut Types<'b>, def_id: DefId) -> Result<Option<StackMutation>> {
@@ -401,14 +401,14 @@ impl<'a, 'b> DefInferer<'a, 'b> {
     }
     fn new(types: &'a mut Types<'b>, closures: Vec<StackMutation>) -> Self {
         let blocks = Default::default();
-        let inferred_type = None;
+        let return_type = None;
         let current_type = stack_mutation!(=>);
         Self {
             types,
             closures,
             blocks,
             current_type,
-            inferred_type,
+            return_type,
         }
     }
     fn infer_def(mut self, def_id: DefId) -> Result<StackMutation> {
@@ -421,9 +421,9 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         self.walk_block(def.block_id)?;
         debug!(
             "Inferred type of {name} ({def_id:?}) to be {:?}",
-            self.inferred_type
+            self.return_type
         );
-        Ok(self.inferred_type.expect("no return statements"))
+        Ok(self.return_type.expect("no return statements"))
     }
     fn walk_block(&mut self, block_id: BlockId) -> Result<()> {
         trace!("Inferring block {block_id:?}");
@@ -436,17 +436,17 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         }
         match block.terminator {
             Terminator::Return => {
-                if let Some(existing) = &self.inferred_type {
-                    self.inferred_type = Some(self.current_type.reconcile(existing)?);
+                if let Some(existing) = &self.return_type {
+                    self.return_type = Some(self.current_type.reconcile(existing)?);
                 } else {
-                    self.inferred_type = Some(self.current_type.clone());
+                    self.return_type = Some(self.current_type.clone());
                 }
             }
             Terminator::ReturnClosure => {
-                if let Some(existing) = &self.inferred_type {
-                    self.inferred_type = Some(self.current_type.reconcile(existing)?);
+                if let Some(existing) = &self.return_type {
+                    self.current_type = self.current_type.reconcile(existing)?;
                 } else {
-                    self.inferred_type = Some(self.current_type.clone());
+                    self.current_type = self.current_type.clone();
                 }
             }
             Terminator::GoTo(block_id) => {
@@ -506,6 +506,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                     .iter()
                     .map(|t| {
                         if let Type::ClosureId(closure_id) = t {
+                            trace!("Calculating {closure_id:?}");
                             let closure = self.types.bytecode.get_closure(*closure_id);
                             let block_id = closure.block_id;
                             // Save the current_type to restore later
@@ -737,17 +738,18 @@ mod test {
     }
     #[test]
     fn test_infinite_loop() {
-        // TODO this should error because the stack could grow by a variable amount
         assert_eq!(
             infer_def_results!(
                 "def infinite [
                 loop [
                     1
-                    [1 2 ==] if [break]
                 ]
             ]"
             ),
-            [Err(Error::Foo)]
+            [Err(Error::CannotReconcile(
+                stack_mutation!(=>Int),
+                stack_mutation!(=>)
+            ))]
         );
     }
 }
