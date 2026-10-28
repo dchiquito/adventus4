@@ -448,28 +448,36 @@ impl ByteCode {
     pub fn iter_def_ids(&self) -> impl Iterator<Item = DefId> {
         (0..self.defs.len()).map(|i| DefId::new(i as u64))
     }
+    pub fn name_of_def(&self, def_id: DefId) -> Option<&String> {
+        self.def_ids
+            .iter()
+            .find(|(_, v)| **v == def_id)
+            .map(|(k, _)| k)
+    }
     pub fn pretty_print(&self, w: &mut impl Write) -> std::fmt::Result {
-        for (i, block) in self.blocks.iter().enumerate() {
-            writeln!(w, "Block {i}")?;
+        for (block_idx, block) in self.blocks.iter().enumerate() {
+            if let Some((def_idx, def)) = self
+                .defs
+                .iter()
+                .enumerate()
+                .find(|(_, def)| def.block_id.0 == block_idx as u64)
+            {
+                let def_id = DefId::new(def_idx as u64);
+                if Some(def_id) == self.main_id {
+                    writeln!(w, "main:")?;
+                }
+                let name = self.name_of_def(def_id);
+                writeln!(
+                    w,
+                    "Definition {name:?} ({def_id:?}) ({} locals) ({} closures):",
+                    def.local_count, def.closure_count
+                )?;
+                if let Some(sig) = &def.declared_type {
+                    writeln!(w, "  :({sig:?})")?;
+                }
+            }
+            writeln!(w, "Block {block_idx}")?;
             block.pretty_print(w)?;
-        }
-        for (i, def) in self.defs.iter().enumerate() {
-            if Some(DefId::new(i as u64)) == self.main_id {
-                writeln!(w, "main:")?;
-            }
-            if let Some(sig) = &def.declared_type {
-                writeln!(
-                    w,
-                    "Definition {i} :({sig:?}) has {:?} ({} locals)",
-                    def.block_id, def.local_count
-                )?;
-            } else {
-                writeln!(
-                    w,
-                    "Definition {i} has {:?} ({} locals)",
-                    def.block_id, def.local_count
-                )?;
-            }
         }
         Ok(())
     }

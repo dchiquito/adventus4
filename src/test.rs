@@ -51,7 +51,7 @@ fn run_test_cases() {
     for (index, test_case) in TEST_CASES.iter().enumerate() {
         let bytecode = compile_test_stdlib(test_case.source);
         let mut types = Types::new(&bytecode);
-        types.infer();
+        types.infer().unwrap();
         let mut vm = VM::new(&bytecode, TestIO::new(test_case.input));
         vm.push_main();
         if let Err(e) = vm.run() {

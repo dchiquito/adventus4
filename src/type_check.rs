@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use log::trace;
+use log::{debug, trace};
 
-use crate::bytecode::{BlockId, ByteCode, DefId, LayoutId, LocalId, Op, PropId, Terminator};
+use crate::bytecode::{
+    BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, PropId, Terminator,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
@@ -11,14 +13,13 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum BuiltinType {
     Type,
     Int,
     Char,
     Bool,
     None,
-    DefId,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
@@ -29,13 +30,14 @@ impl GenericId {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
     Object(LayoutId),
     Local(LocalId),
     Prop(PropId),
     Generic(GenericId),
+    DefId(DefId),
     Unknown,
 }
 impl Type {
@@ -52,7 +54,7 @@ impl Type {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub struct StackMutation {
     before: Vec<Type>,
     after: Vec<Type>,
@@ -113,8 +115,8 @@ macro_rules! stack_mutation {
         $v.push(Type::Builtin(BuiltinType::None));
         stack_mutation!(expand, $v; $($stack)*);
     };
-    (expand, $v:expr; DefId $($stack:tt)*) => {
-        $v.push(Type::Builtin(BuiltinType::DefId));
+    (expand, $v:expr; DefId($def_id:expr) $($stack:tt)*) => {
+        $v.push(Type::DefId($def_id));
         stack_mutation!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Unknown $($stack:tt)*) => {
@@ -152,7 +154,7 @@ impl StackMutation {
         };
         let after = {
             if self.after.len() != other.after.len() {
-                panic!("{:?} != {:?}", self.after, other.after);
+                // panic!("{:?} != {:?}", self.after, other.after);
                 Err(Error::Foo)?
             } else {
                 self.after
@@ -181,7 +183,7 @@ impl std::fmt::Debug for StackMutation {
 #[derive(Debug)]
 pub struct Types<'b> {
     bytecode: &'b ByteCode,
-    def_types: HashMap<DefId, StackMutation>,
+    def_types: HashMap<(DefId, Vec<StackMutation>), StackMutation>,
     current_generic: GenericId,
     generics: HashMap<GenericId, Type>,
 }
@@ -205,7 +207,8 @@ impl<'b> Types<'b> {
         // At this point, we can be sure that any def dependency loops can be broken by using
         // the declared type of the def.
         for def_id in self.bytecode.iter_def_ids() {
-            self.infer_def(def_id)?;
+            trace!("Beginning inference of {def_id:?}");
+            let inferred_type = DefInferer::infer(self, def_id)?;
         }
         Ok(())
     }
@@ -281,10 +284,14 @@ impl<'b> Types<'b> {
         }
     }
     /// Get the cached type of a def, or infer it if it is not yet cached.
-    fn type_of_def(&mut self, def_id: DefId) -> Result<&StackMutation> {
+    fn type_of_def(
+        &mut self,
+        def_id: DefId,
+        closures: Vec<StackMutation>,
+    ) -> Result<&StackMutation> {
         // First, check the precomputed cache
-        if self.def_types.contains_key(&def_id) {
-            Ok(self.def_types.get(&def_id).unwrap())
+        if self.def_types.contains_key(&(def_id, closures.clone())) {
+            Ok(self.def_types.get(&(def_id, closures)).unwrap())
         } else {
             // Second, check if a type was declared.
             let t = self
@@ -294,15 +301,13 @@ impl<'b> Types<'b> {
                 .clone()
                 .map(Ok)
                 // Third, compute the type
-                .unwrap_or_else(|| self.infer_def(def_id))?;
+                .unwrap_or_else(|| {
+                    DefInferer::infer_with_closures(self, def_id, closures.clone())
+                })?;
             // Save the declared or computed type for next time.
-            self.def_types.insert(def_id, t);
-            Ok(self.def_types.get(&def_id).unwrap())
+            self.def_types.insert((def_id, closures.clone()), t);
+            Ok(self.def_types.get(&(def_id, closures)).unwrap())
         }
-    }
-    /// Infer the type of a def.
-    fn infer_def(&mut self, def_id: DefId) -> Result<StackMutation> {
-        DefInferer::new(self).infer_def(def_id)
     }
     fn new_generic(&mut self) -> GenericId {
         let g = self.current_generic;
@@ -367,17 +372,35 @@ impl<'b> Types<'b> {
 
 struct DefInferer<'a, 'b> {
     types: &'a mut Types<'b>,
+    closures: Vec<StackMutation>,
     blocks: HashMap<BlockId, StackMutation>,
     current_type: StackMutation,
     inferred_type: Option<StackMutation>,
 }
 impl<'a, 'b> DefInferer<'a, 'b> {
-    fn new(types: &'a mut Types<'b>) -> Self {
+    fn infer(types: &'a mut Types<'b>, def_id: DefId) -> Result<Option<StackMutation>> {
+        trace!("BEGIN INFERENCE OF {def_id:?}");
+        let def = types.bytecode.get_def(def_id);
+        if def.closure_count == 0 {
+            Self::new(types, vec![]).infer_def(def_id).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+    fn infer_with_closures(
+        types: &'a mut Types<'b>,
+        def_id: DefId,
+        closures: Vec<StackMutation>,
+    ) -> Result<StackMutation> {
+        Self::new(types, closures).infer_def(def_id)
+    }
+    fn new(types: &'a mut Types<'b>, closures: Vec<StackMutation>) -> Self {
         let blocks = Default::default();
         let inferred_type = None;
         let current_type = stack_mutation!(=>);
         Self {
             types,
+            closures,
             blocks,
             current_type,
             inferred_type,
@@ -392,15 +415,15 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             .find(|(_, v)| **v == def_id)
             .map(|(k, _)| k);
         let def = self.types.bytecode.get_def(def_id);
-        trace!(
-            "Inferring def {name:?} ({def_id:?}) ({:?} closures)",
-            def.closure_count
+        debug!(
+            "Inferring def {name:?} ({def_id:?}) ({:?} closures: {:?})",
+            def.closure_count, self.closures,
         );
-        if def.closure_count > 0 {
-            log::debug!("Skipping due to closures");
-            return Ok(stack_mutation!(=>));
-        }
         self.walk_block(def.block_id)?;
+        debug!(
+            "Inferred type of {name:?} ({def_id:?}) to be {:?}",
+            self.inferred_type
+        );
         Ok(self.inferred_type.expect("no return statements"))
     }
     fn walk_block(&mut self, block_id: BlockId) -> Result<()> {
@@ -409,6 +432,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         let block = self.types.bytecode.get_block(block_id);
         for op in block.iter() {
             let sm = self.infer_op(op)?;
+            trace!("Inferred {op:?} to be {sm:?}");
             self.current_type = self.types.chain(&self.current_type, &sm);
         }
         match block.terminator {
@@ -461,20 +485,49 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         Ok(())
     }
     fn infer_op(&mut self, op: Op) -> Result<StackMutation> {
+        trace!("Inferring type of {op:?}");
         Ok(match op {
             Op::Integer(_) => stack_mutation!(=>Int),
             Op::Character(_) => stack_mutation!(=>Char),
-            Op::Call(def_id) => return self.types.type_of_def(def_id).cloned(),
-            Op::CallClosure(_closure_id) => {
-                // TODO Apply a placeholder mutation.
-                // The stack could be in any state after calling a closure.
-                // It will only be known when the current definition is called.
-                // All we know for sure is that the closure must chain cleanly
-                // from `self.after`.
-                // We should save that fact in the DefInferer for later.
-                stack_mutation!(=>)
+            Op::Call(def_id) => {
+                trace!("Call to {def_id:?}: {:?}!!!", self.current_type);
+                let def = self.types.bytecode.get_def(def_id);
+                trace!("It has {} closures", def.closure_count);
+                let before: Vec<Type> = self
+                    .current_type
+                    .after
+                    .iter()
+                    .rev()
+                    .take(def.closure_count)
+                    .rev()
+                    .cloned()
+                    .collect();
+                trace!("before: {before:?}");
+                let closures: Vec<StackMutation> = before
+                    .iter()
+                    .map(|t| {
+                        if let Type::DefId(did) = t {
+                            DefInferer::infer(self.types, *did)
+                                .map(|sm| sm.expect("couldn't type closure"))
+                        } else {
+                            unreachable!("compilation error: not enough closures")
+                        }
+                    })
+                    .collect::<Result<Vec<StackMutation>>>()?;
+                trace!("closures: {closures:?}");
+                let closure_consumer = StackMutation {
+                    before,
+                    after: vec![],
+                };
+                let def_type = self.types.type_of_def(def_id, closures)?.clone();
+                self.types.chain(&closure_consumer, &def_type)
             }
-            Op::ClosureDefId(def_id) => stack_mutation!(=>DefId),
+            Op::CallClosure(closure_id) => {
+                let idx = closure_id.to_index();
+                trace!("Calling closure {idx} with closures {:?}", self.closures);
+                self.closures[idx].clone()
+            }
+            Op::ClosureDefId(def_id) => stack_mutation!(=>DefId(def_id)),
             Op::Dup => {
                 let a = self.types.new_generic();
                 stack_mutation!(T(a)=>T(a) T(a))
@@ -569,7 +622,7 @@ mod test {
             let _ = types.infer();
             bytecode
                 .iter_def_ids()
-                .map(|def_id| types.type_of_def(def_id).cloned())
+                .map(|def_id| DefInferer::infer(&mut types, def_id).map(Option::unwrap))
                 .collect::<Vec<Result<StackMutation>>>()
         }};
     }
@@ -580,7 +633,7 @@ mod test {
             types.infer().expect("no errors");
             bytecode
                 .iter_def_ids()
-                .map(|def_id| types.type_of_def(def_id).cloned().unwrap())
+                .map(|def_id| DefInferer::infer(&mut types, def_id).unwrap().unwrap())
                 .collect::<Vec<StackMutation>>()
         }};
     }
