@@ -29,7 +29,7 @@ macro_rules! no_input {
     };
 }
 
-pub static TEST_CASES: [TestCase; 11] = [
+pub static TEST_CASES: [TestCase; 13] = [
     no_input!("def main []", ""),
     no_input!("def main [0 print]", "0\n"),
     no_input!("def main [1 print]", "1\n"),
@@ -44,6 +44,8 @@ pub static TEST_CASES: [TestCase; 11] = [
         "def foo @bar @baz [@bar @baz] def main [foo 1 print]",
         "1\n"
     ),
+    no_input!("def main [1 2 swap print print]", "1\n2\n"),
+    no_input!("def main [1 2 drop print]", "1\n"),
 ];
 
 #[test]
