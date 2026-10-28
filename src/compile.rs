@@ -8,7 +8,7 @@ use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
 use crate::{
     bytecode::{
-        BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
+        BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
         Terminator,
     },
     type_check::{BuiltinType, StackMutation, Type},
@@ -289,11 +289,11 @@ impl<'a, 's> DefCompiler<'a, 's> {
         block_compiler.compile_expression(cursor);
         block_compiler.set_terminator(Terminator::ReturnClosure);
     }
-    fn closure_id(&self, macro_var: PropId) -> Result<ClosureId, ()> {
+    fn closure_id(&self, macro_var: PropId) -> Result<ClosureVar, ()> {
         self.macro_vars
             .iter()
             .position(|&mv| mv == macro_var)
-            .map(ClosureId::from_index)
+            .map(ClosureVar::from_index)
             .ok_or(())
     }
 }
@@ -403,16 +403,16 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 // Advance to the next token, hopefully an expression
                 goto_next_sibling!(cursor);
                 let closure_block_id = self.def_compiler.compiler.bytecode.new_block();
-                let closure_def_id = self
+                let closure_id = self
                     .def_compiler
                     .compiler
                     .bytecode
-                    .new_def(closure_block_id, 0);
+                    .new_closure(closure_block_id);
                 // Call compile_def in the existing def context
                 self.def_compiler.compile_closure(cursor, closure_block_id);
                 // Encode the def_ids of the closures as literals on the stack.
                 // The VM will retrieve them when the def is called.
-                self.push(cursor, Op::ClosureDefId(closure_def_id));
+                self.push(cursor, Op::ClosureId(closure_id));
                 goto_first_child!(cursor);
             }
             self.push(cursor, Op::Call(def_id));

@@ -1,10 +1,10 @@
 use log::trace;
 
-use crate::source;
+use crate::{bytecode::ClosureId, source};
 use std::{fmt::Write, io::BufRead, ops::Range, slice::Iter};
 
 use crate::bytecode::{
-    BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
+    BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
     Terminator,
 };
 
@@ -88,7 +88,7 @@ pub enum Value {
     ObjectRef(usize),
     ArrayRef(usize),
     LayoutId(u64),
-    ClosureDefId(DefId),
+    ClosureId(ClosureId),
 }
 impl TryFrom<u64> for Value {
     type Error = ErrorKind;
@@ -110,7 +110,7 @@ impl TryFrom<u64> for Value {
             0b1000 => Self::ObjectRef(stripped_value as usize),
             0b1001 => Self::ArrayRef(stripped_value as usize),
             0b1010 => Self::LayoutId(stripped_value),
-            0b1011 => Self::ClosureDefId(DefId::new(stripped_value)),
+            0b1011 => Self::ClosureId(ClosureId::new(stripped_value)),
             0b10000..=u64::MAX => unreachable!(),
             _ => return Err(ErrorKind::ValueEncoding(value)),
         })
@@ -145,7 +145,7 @@ impl From<Value> for u64 {
                 assert_eq!(id >> 60, 0);
                 id ^ (0b1010 << 60)
             }
-            Value::ClosureDefId(id) => {
+            Value::ClosureId(id) => {
                 let id = id.to_value();
                 assert_eq!(id >> 60, 0);
                 id ^ (0b1011 << 60)
@@ -189,7 +189,7 @@ struct StackFrame {
     block_id: BlockId,
     pc: usize,
     locals: Vec<u64>,
-    closures: Vec<DefId>,
+    closures: Vec<ClosureId>,
     frame_with_locals: Option<usize>,
     closure_stack: Vec<ClosureFrame>,
 }
@@ -295,8 +295,8 @@ impl<T: IO> Iterator for VM<'_, T> {
             OpCode::Integer => Op::Integer(self.next_word()?),
             OpCode::Character => Op::Character(self.next_word()? as u8),
             OpCode::Call => Op::Call(DefId::new(self.next_word()?)),
-            OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word()?)),
-            OpCode::ClosureDefId => Op::ClosureDefId(DefId::new(self.next_word()?)),
+            OpCode::CallClosure => Op::CallClosure(ClosureVar::new(self.next_word()?)),
+            OpCode::ClosureDefId => Op::ClosureId(ClosureId::new(self.next_word()?)),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Drop => Op::Drop,
@@ -415,8 +415,8 @@ impl<'a, T: IO> VM<'a, T> {
             Op::Integer(i) => self.op_integer(i),
             Op::Character(c) => self.op_character(c),
             Op::Call(def_id) => self.op_call(def_id)?,
-            Op::CallClosure(closure_id) => self.op_call_closure(closure_id),
-            Op::ClosureDefId(def_id) => self.op_closure_def_id(def_id),
+            Op::CallClosure(closure_var) => self.op_call_closure(closure_var),
+            Op::ClosureId(closure_id) => self.op_closure_id(closure_id),
             Op::Dup => self.op_dup(),
             Op::Swap => self.op_swap()?,
             Op::Drop => self.op_drop()?,
@@ -508,11 +508,11 @@ impl<T: IO> VM<'_, T> {
             })),
         }
     }
-    fn pop_closure_def_id(&mut self) -> Result<DefId> {
+    fn pop_closure_id(&mut self) -> Result<ClosureId> {
         match self.pop()? {
-            Value::ClosureDefId(def_id) => Ok(def_id),
+            Value::ClosureId(closure_id) => Ok(closure_id),
             v => Err(self.error(ErrorKind::TypeMismatch {
-                expected: Value::ClosureDefId(DefId::new(0)),
+                expected: Value::ClosureId(ClosureId::new(0)),
                 actual: v,
             })),
         }
@@ -560,7 +560,7 @@ impl<T: IO> VM<'_, T> {
         let def = self.bytecode.get_def(def_id);
         let mut closures = Vec::with_capacity(def.closure_count);
         for _ in 0..def.closure_count {
-            let closure_def_id = self.pop_closure_def_id()?;
+            let closure_def_id = self.pop_closure_id()?;
             closures.push(closure_def_id);
         }
         // Consider `def foo @a @b @c [...]`
@@ -578,22 +578,22 @@ impl<T: IO> VM<'_, T> {
         self.call_stack.push(frame);
         Ok(())
     }
-    fn op_call_closure(&mut self, closure_id: ClosureId) {
+    fn op_call_closure(&mut self, closure_var: ClosureVar) {
         let call_stack_len = self.call_stack.len();
         let frame = self.call_stack.last_mut().expect("nothing on call stack");
-        let def_id = frame.closures[closure_id.to_index()];
-        let def = self.bytecode.get_def(def_id);
+        let closure_id = frame.closures[closure_var.to_index()];
+        let closure = self.bytecode.get_closure(closure_id);
         let closure_frame = ClosureFrame {
             block_id: frame.block_id,
             pc: frame.pc,
         };
-        frame.block_id = def.block_id;
+        frame.block_id = closure.block_id;
         frame.pc = 0;
         frame.closure_stack.push(closure_frame);
         frame.frame_with_locals = Some(call_stack_len - 1);
     }
-    fn op_closure_def_id(&mut self, def_id: DefId) {
-        self.push(Value::ClosureDefId(def_id));
+    fn op_closure_id(&mut self, closure_id: ClosureId) {
+        self.push(Value::ClosureId(closure_id));
     }
     fn op_dup(&mut self) {
         let peek = *self.stack.last().unwrap();
@@ -832,7 +832,7 @@ impl<T: IO> VM<'_, T> {
                 write!(w, "]")?;
             }
             Value::LayoutId(id) => write!(w, "LayoutId({id})")?,
-            Value::ClosureDefId(id) => write!(w, "ClosureDefId({id:?})")?,
+            Value::ClosureId(id) => write!(w, "ClosureDefId({id:?})")?,
         }
         Ok(())
     }

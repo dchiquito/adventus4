@@ -147,11 +147,22 @@ impl DefId {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ClosureId(u64);
 impl ClosureId {
-    pub fn new(def_id: u64) -> Self {
-        Self(def_id)
+    pub fn new(closure_id: u64) -> Self {
+        Self(closure_id)
     }
-    pub fn from_index(index: usize) -> Self {
-        Self(index as u64)
+    pub fn to_value(&self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ClosureVar(u64);
+impl ClosureVar {
+    pub fn new(idx: u64) -> Self {
+        Self(idx)
+    }
+    pub fn from_index(idx: usize) -> Self {
+        Self(idx as u64)
     }
     pub fn to_index(&self) -> usize {
         self.0 as usize
@@ -163,8 +174,8 @@ pub enum Op {
     Integer(u64),
     Character(u8),
     Call(DefId),
-    CallClosure(ClosureId),
-    ClosureDefId(DefId),
+    CallClosure(ClosureVar),
+    ClosureId(ClosureId),
     Dup,
     Swap,
     Drop,
@@ -201,7 +212,7 @@ impl From<Op> for OpCode {
             Op::Character(_) => OpCode::Character,
             Op::Call(_) => OpCode::Call,
             Op::CallClosure(_) => OpCode::CallClosure,
-            Op::ClosureDefId(_) => OpCode::ClosureDefId,
+            Op::ClosureId(_) => OpCode::ClosureDefId,
             Op::Dup => OpCode::Dup,
             Op::Swap => OpCode::Swap,
             Op::Drop => OpCode::Drop,
@@ -263,7 +274,7 @@ impl Block {
             Op::Character(c) => Some(c as u64),
             Op::Call(def_id) => Some(def_id.0),
             Op::CallClosure(closure_id) => Some(closure_id.0),
-            Op::ClosureDefId(def_id) => Some(def_id.0),
+            Op::ClosureId(def_id) => Some(def_id.0),
             Op::BindLocal(local_id) => Some(local_id.0),
             Op::PushLocal(local_id) => Some(local_id.0),
             Op::BindProp(prop_id) => Some(prop_id.0),
@@ -312,8 +323,8 @@ impl Iterator for BlockIterator<'_> {
             OpCode::Integer => Op::Integer(self.next_word()),
             OpCode::Character => Op::Character(self.next_word() as u8),
             OpCode::Call => Op::Call(DefId::new(self.next_word())),
-            OpCode::CallClosure => Op::CallClosure(ClosureId::new(self.next_word())),
-            OpCode::ClosureDefId => Op::ClosureDefId(DefId::new(self.next_word())),
+            OpCode::CallClosure => Op::CallClosure(ClosureVar::new(self.next_word())),
+            OpCode::ClosureDefId => Op::ClosureId(ClosureId::new(self.next_word())),
             OpCode::Dup => Op::Dup,
             OpCode::Swap => Op::Swap,
             OpCode::Drop => Op::Drop,
@@ -376,6 +387,16 @@ impl Definition {
     }
 }
 
+#[derive(Debug)]
+pub struct Closure {
+    pub block_id: BlockId,
+}
+impl Closure {
+    pub fn new(block_id: BlockId) -> Self {
+        Self { block_id }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SourceId(usize);
 
@@ -415,6 +436,7 @@ pub struct ByteCode {
     pub blocks: Vec<Block>,
     pub defs: Vec<Definition>,
     pub main_id: Option<DefId>,
+    pub closures: Vec<Closure>,
     pub layouts: HashMap<LayoutId, Vec<PropId>>,
     pub def_ids: HashMap<String, DefId>,
     pub prop_ids: HashMap<String, PropId>,
@@ -448,11 +470,20 @@ impl ByteCode {
     pub fn iter_def_ids(&self) -> impl Iterator<Item = DefId> {
         (0..self.defs.len()).map(|i| DefId::new(i as u64))
     }
-    pub fn name_of_def(&self, def_id: DefId) -> Option<&String> {
+    pub fn name_of_def(&self, def_id: DefId) -> &str {
         self.def_ids
             .iter()
             .find(|(_, v)| **v == def_id)
             .map(|(k, _)| k)
+            .expect("all defs are named")
+    }
+    pub fn new_closure(&mut self, block_id: BlockId) -> ClosureId {
+        let closure_id = ClosureId::new(self.closures.len() as u64);
+        self.closures.push(Closure::new(block_id));
+        closure_id
+    }
+    pub fn get_closure(&self, closure_id: ClosureId) -> &Closure {
+        &self.closures[closure_id.0 as usize]
     }
     pub fn pretty_print(&self, w: &mut impl Write) -> std::fmt::Result {
         for (block_idx, block) in self.blocks.iter().enumerate() {
@@ -475,6 +506,16 @@ impl ByteCode {
                 if let Some(sig) = &def.declared_type {
                     writeln!(w, "  :({sig:?})")?;
                 }
+            }
+            if let Some(closure_idx) = self
+                .closures
+                .iter()
+                .enumerate()
+                .find(|(_, def)| def.block_id.0 == block_idx as u64)
+                .map(|(idx, _)| idx)
+            {
+                let closure_id = ClosureId::new(closure_idx as u64);
+                writeln!(w, "Closure {closure_id:?}:",)?;
             }
             writeln!(w, "Block {block_idx}")?;
             block.pretty_print(w)?;

@@ -38,6 +38,7 @@ pub enum Type {
     Prop(PropId),
     Generic(GenericId),
     DefId(DefId),
+    ClosureId(ClosureId),
     Unknown,
 }
 impl Type {
@@ -117,6 +118,10 @@ macro_rules! stack_mutation {
     };
     (expand, $v:expr; DefId($def_id:expr) $($stack:tt)*) => {
         $v.push(Type::DefId($def_id));
+        stack_mutation!(expand, $v; $($stack)*);
+    };
+    (expand, $v:expr; ClosureId($def_id:expr) $($stack:tt)*) => {
+        $v.push(Type::ClosureId($def_id));
         stack_mutation!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Unknown $($stack:tt)*) => {
@@ -527,7 +532,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 trace!("Calling closure {idx} with closures {:?}", self.closures);
                 self.closures[idx].clone()
             }
-            Op::ClosureDefId(def_id) => stack_mutation!(=>DefId(def_id)),
+            Op::ClosureId(closure_id) => stack_mutation!(=>ClosureId(closure_id)),
             Op::Dup => {
                 let a = self.types.new_generic();
                 stack_mutation!(T(a)=>T(a) T(a))
