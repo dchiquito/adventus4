@@ -412,21 +412,15 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         }
     }
     fn infer_def(mut self, def_id: DefId) -> Result<StackMutation> {
-        let name = self
-            .types
-            .bytecode
-            .def_ids
-            .iter()
-            .find(|(_, v)| **v == def_id)
-            .map(|(k, _)| k);
+        let name = self.types.bytecode.name_of_def(def_id);
         let def = self.types.bytecode.get_def(def_id);
         debug!(
-            "Inferring def {name:?} ({def_id:?}) ({:?} closures: {:?})",
+            "Inferring def {name} ({def_id:?}) ({:?} closures: {:?})",
             def.closure_count, self.closures,
         );
         self.walk_block(def.block_id)?;
         debug!(
-            "Inferred type of {name:?} ({def_id:?}) to be {:?}",
+            "Inferred type of {name} ({def_id:?}) to be {:?}",
             self.inferred_type
         );
         Ok(self.inferred_type.expect("no return statements"))
@@ -511,9 +505,17 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 let closures: Vec<StackMutation> = before
                     .iter()
                     .map(|t| {
-                        if let Type::DefId(did) = t {
-                            DefInferer::infer(self.types, *did)
-                                .map(|sm| sm.expect("couldn't type closure"))
+                        if let Type::ClosureId(closure_id) = t {
+                            let closure = self.types.bytecode.get_closure(*closure_id);
+                            let block_id = closure.block_id;
+                            // Save the current_type to restore later
+                            let mut closure_type = stack_mutation!(=>);
+                            std::mem::swap(&mut self.current_type, &mut closure_type);
+                            self.walk_block(block_id)?;
+                            // Swap current_type to restore it and retrieve the
+                            // closure_type
+                            std::mem::swap(&mut self.current_type, &mut closure_type);
+                            Ok(closure_type)
                         } else {
                             unreachable!("compilation error: not enough closures")
                         }
