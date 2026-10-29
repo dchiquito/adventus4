@@ -20,6 +20,7 @@ pub enum ErrorKind {
     ValueEncoding(u64),
     TypeMismatch { expected: Value, actual: Value },
     NegativeNumber(i64),
+    IndexOutOfBounds { index: i64, len: usize },
     Unknown,
 }
 #[derive(Debug)]
@@ -178,6 +179,7 @@ impl Object {
 }
 
 struct Array {
+    len: usize,
     elements: Vec<u64>,
 }
 
@@ -517,13 +519,6 @@ impl<T: IO> VM<'_, T> {
             })),
         }
     }
-    fn pop_index(&mut self) -> Result<usize> {
-        let index = self.pop_integer()?;
-        if index < 0 {
-            return Err(self.error(ErrorKind::NegativeNumber(index)));
-        }
-        Ok(index as usize)
-    }
     fn pop_object_ref(&mut self) -> Result<usize> {
         match self.pop()? {
             Value::ObjectRef(idx) => Ok(idx),
@@ -853,7 +848,10 @@ impl<T: IO> VM<'_, T> {
     fn op_read_line(&mut self) -> Result<()> {
         let line = self.io.read_line();
         let len = line.len();
-        let array = Array { elements: line };
+        let array = Array {
+            len,
+            elements: line,
+        };
         let arr_id = Value::ArrayRef(self.arrays.len());
         self.arrays.push(array);
         self.push(arr_id);
@@ -878,8 +876,13 @@ impl<T: IO> VM<'_, T> {
         Ok(())
     }
     fn op_empty_array(&mut self) -> Result<()> {
-        let len = self.pop_index()?;
+        let len = self.pop_integer()?;
+        if len < 0 {
+            return Err(self.error(ErrorKind::NegativeNumber(len)));
+        }
+        let len = len as usize;
         let array = Array {
+            len,
             elements: vec![0; len],
         };
         let arr_id = Value::ArrayRef(self.arrays.len());
@@ -888,18 +891,28 @@ impl<T: IO> VM<'_, T> {
         Ok(())
     }
     fn op_array_get(&mut self) -> Result<()> {
-        let index = self.pop_index()?;
+        let index = self.pop_integer()?;
         let arr_id = self.pop_array_ref()?;
         let array = &self.arrays[arr_id];
+        let len = array.len;
+        if index < 0 || len as i64 <= index {
+            return Err(self.error(ErrorKind::IndexOutOfBounds { index, len }));
+        }
+        let index = index as usize;
         let element = array.elements[index];
         self.stack.push(element);
         Ok(())
     }
     fn op_array_set(&mut self) -> Result<()> {
         let value = self.pop()?;
-        let index = self.pop_index()?;
+        let index = self.pop_integer()?;
         let arr_id = self.pop_array_ref()?;
         let array = &mut self.arrays[arr_id];
+        let len = array.len;
+        if index < 0 || len as i64 <= index {
+            return Err(self.error(ErrorKind::IndexOutOfBounds { index, len }));
+        }
+        let index = index as usize;
         array.elements[index] = u64::from(value);
         Ok(())
     }
