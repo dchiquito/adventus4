@@ -44,6 +44,8 @@ macro_rules! tests {
                     .arg(&tmp_source)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    // TODO log stderr
                     .spawn()
                     .expect("error starting cargo");
                 {
