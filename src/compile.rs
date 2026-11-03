@@ -1,3 +1,6 @@
+#[cfg(test)]
+use std::path::PathBuf;
+
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -760,16 +763,50 @@ pub fn compile_stdlib(bytecode: &mut ByteCode) {
 }
 
 #[cfg(test)]
+fn tmp_test_file_path(source: &str) -> PathBuf {
+    let hash = {
+        let mut hasher = std::hash::DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
+    };
+    let unique_name = format!("{hash}.adv");
+    {
+        let mut tmp_source = std::env::temp_dir();
+        tmp_source.push(unique_name);
+        tmp_source
+    }
+}
+
+#[cfg(test)]
+fn write_test_file(source: &str) -> std::io::Result<PathBuf> {
+    let path = tmp_test_file_path(source);
+    std::fs::write(&path, source)?;
+    Ok(path)
+}
+
+#[cfg(test)]
 pub fn compile_test(source: &str) -> ByteCode {
+    let source_name = write_test_file(source).expect("error writing test file");
     let mut bytecode = ByteCode::default();
-    Compiler::new(&mut bytecode, "test.adv", source).compile();
+    Compiler::new(
+        &mut bytecode,
+        source_name.to_str().expect("non-unicode path"),
+        source,
+    )
+    .compile();
     bytecode
 }
 
 #[cfg(test)]
 pub fn compile_test_stdlib(source: &str) -> ByteCode {
+    let source_name = write_test_file(source).expect("error writing test file");
     let mut bytecode = ByteCode::default();
     compile_stdlib(&mut bytecode);
-    Compiler::new(&mut bytecode, "test.adv", source).compile();
+    Compiler::new(
+        &mut bytecode,
+        source_name.to_str().expect("non-unicode path"),
+        source,
+    )
+    .compile();
     bytecode
 }
