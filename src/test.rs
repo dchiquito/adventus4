@@ -1,11 +1,65 @@
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
+use crate::source::write_test_file;
 use crate::{
     compile::compile_test_stdlib,
     type_check::Types,
     vm::{TestIO, VM},
 };
+
+fn run_internal_test(source: &str, input: &str) -> String {
+    let bytecode = compile_test_stdlib(source);
+    let mut types = Types::new(&bytecode);
+    types.infer().unwrap();
+    let mut vm = VM::new(&bytecode, TestIO::new(input));
+    vm.push_main();
+    if let Err(e) = vm.run() {
+        let mut buf = vec![];
+        e.format(&mut buf, &bytecode).unwrap();
+        panic!("unexpected error:\n{}", str::from_utf8(&buf).unwrap());
+    }
+    let actual_output = vm.get_io().get_output();
+    actual_output.to_string()
+}
+
+fn run_cli_test(source: &str, input: &str) -> (String, String) {
+    let tmp_source = write_test_file(source).expect("error writing test file");
+    let mut child = Command::new("cargo")
+        .args(["run", "--"])
+        .arg(&tmp_source)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("error starting cargo");
+    {
+        let mut stdin = child.stdin.take().expect("error grabbing input");
+        stdin
+            .write_all(input.as_bytes())
+            .expect("error writing input");
+        // Drop stdin here
+    }
+    let status = child.wait().expect("error waiting for child");
+    assert!(status.success(), "test case failed:\n{}", source);
+    let out = {
+        let mut out = String::new();
+        let mut stdout = child.stdout.take().expect("error grabbing stdout");
+        stdout
+            .read_to_string(&mut out)
+            .expect("error reading stdout");
+        out
+    };
+    let err = {
+        let mut err = String::new();
+        let mut stderr = child.stderr.take().expect("error grabbing stdout");
+        stderr
+            .read_to_string(&mut err)
+            .expect("error reading stderr");
+        err
+    };
+    (out, err)
+}
 
 macro_rules! tests {
     () => {};
@@ -18,69 +72,16 @@ macro_rules! tests {
 
             #[test]
             fn test_internal() {
-                let bytecode = compile_test_stdlib($source);
-                let mut types = Types::new(&bytecode);
-                types.infer().unwrap();
-                let mut vm = VM::new(&bytecode, TestIO::new($in));
-                vm.push_main();
-                if let Err(e) = vm.run() {
-                    let mut buf = vec![];
-                    e.format(&mut buf, &bytecode).unwrap();
-                    panic!("unexpected error:\n{}", str::from_utf8(&buf).unwrap());
-                }
-                let actual_output = vm.get_io().get_output();
+                let actual_output = run_internal_test($source, $in);
                 assert_eq!($out, actual_output, "{}", $source);
             }
 
             #[test]
             fn test_cli() {
-                let tmp_source = {
-                    let mut tmp_source = std::env::temp_dir();
-                    tmp_source.push(format!("test_{}.adv", stringify!($name)));
-                    tmp_source
-                };
-                std::fs::write(&tmp_source, $source).expect("error writing file");
-                let mut child = Command::new("cargo")
-                    .args(["run", "--"])
-                    .arg(&tmp_source)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-                    .expect("error starting cargo");
-                {
-                    let mut stdin = child.stdin.take().expect("error grabbing input");
-                    stdin
-                        .write_all($in.as_bytes())
-                        .expect("error writing input");
-                    // Drop stdin here
-                }
-                let status = child.wait().expect("error waiting for child");
-                assert!(
-                    status.success(),
-                    "test case {} failed:\n{}",
-                    stringify!($name),
-                    $source
-                );
-                let actual_output = {
-                    let mut actual_output = String::new();
-                    let mut stdout = child.stdout.take().expect("error grabbing stdout");
-                    stdout
-                        .read_to_string(&mut actual_output)
-                        .expect("error reading output");
-                    actual_output
-                };
+                let (actual_output, err) = run_cli_test($source, $in);
                 if $out != actual_output {
-                    let err = {
-                        let mut err = String::new();
-                        let mut stderr = child.stderr.take().expect("error grabbing stdout");
-                        stderr
-                            .read_to_string(&mut err)
-                            .expect("error reading stderr");
-                        err
-                    };
                     panic!(
-                        "{}\nexpected: {}\n  actual: {}\nstderr:\n{}",
+                        "{}\nexpected: {}\n  actual: {}\n  stderr:\n{}",
                         $source,
                         $out,
                         actual_output,
@@ -111,5 +112,5 @@ tests![
     (swap: "def main [1 2 swap print print]" => "1\n2\n"),
     (drop: "def main [1 2 drop print]" => "1\n"),
     (array_get: "def main [[10 empty_array] 0 array_get print]" => "0\n"),
-    (array_out_of_bounds: "def main [[10 empty_array] -1 array_get print]" => "0\n"),
+    (array_out_of_bounds: "def main [[10 empty_array] -1 array_get print]" => "oh no"),
 ];

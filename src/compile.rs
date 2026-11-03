@@ -9,6 +9,8 @@ use std::{
 use tree_sitter::{Parser, Tree, TreeCursor};
 use tree_sitter_adventus::LANGUAGE as ADVENTUS;
 
+#[cfg(test)]
+use crate::source::write_test_file;
 use crate::{
     bytecode::{
         BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
@@ -760,28 +762,6 @@ pub fn compile_stdlib(bytecode: &mut ByteCode) {
     for lib in crate::source::LIBS {
         compile_source(bytecode, lib);
     }
-}
-
-#[cfg(test)]
-fn tmp_test_file_path(source: &str) -> PathBuf {
-    let hash = {
-        let mut hasher = std::hash::DefaultHasher::new();
-        source.hash(&mut hasher);
-        hasher.finish()
-    };
-    let unique_name = format!("{hash}.adv");
-    {
-        let mut tmp_source = std::env::temp_dir();
-        tmp_source.push(unique_name);
-        tmp_source
-    }
-}
-
-#[cfg(test)]
-fn write_test_file(source: &str) -> std::io::Result<PathBuf> {
-    let path = tmp_test_file_path(source);
-    std::fs::write(&path, source)?;
-    Ok(path)
 }
 
 #[cfg(test)]

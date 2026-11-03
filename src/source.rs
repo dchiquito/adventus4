@@ -16,3 +16,27 @@ pub fn read_source_file(source_name: &str) -> String {
         std::fs::read_to_string(&path).unwrap()
     }
 }
+
+#[cfg(test)]
+pub fn tmp_test_file_path(source: &str) -> PathBuf {
+    let hash = {
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = std::hash::DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
+    };
+    let unique_name = format!("{hash}.adv");
+    {
+        let mut tmp_source = std::env::temp_dir();
+        tmp_source.push(unique_name);
+        tmp_source
+    }
+}
+
+#[cfg(test)]
+pub fn write_test_file(source: &str) -> std::io::Result<PathBuf> {
+    let path = tmp_test_file_path(source);
+    std::fs::write(&path, source)?;
+    Ok(path)
+}
