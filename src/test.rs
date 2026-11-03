@@ -153,5 +153,5 @@ tests![
     (swap: "def main [1 2 swap print print]" => "1\n2\n"),
     (drop: "def main [1 2 drop print]" => "1\n"),
     (array_get: "def main [[10 empty_array] 0 array_get print]" => "0\n"),
-    (array_out_of_bounds: "def main [[10 empty_array] -1 array_get print]" => !VM "Run time error: IndexOutOfBounds { index: -1, len: 10 }\n- /tmp/12134431566005183982.adv:1:31: array_get\ndef main [[10 empty_array] -1 array_get print]\n"),
+    (array_out_of_bounds: "def main [[10 empty_array] -1 array_get print]" => !VM "Run time error: IndexOutOfBounds { index: -1, len: 10 }\n- /tmp/uXqBjfTKmhK.adv:1:31: array_get\ndef main [[10 empty_array] -1 array_get print]\n"),
 ];

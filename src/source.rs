@@ -18,6 +18,27 @@ pub fn read_source_file(source_name: &str) -> String {
 }
 
 #[cfg(test)]
+const BASE64URL: [char; 64] = [
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+    'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
+    'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4',
+    '5', '6', '7', '8', '9', '-', '_',
+];
+
+#[cfg(test)]
+fn base64_encode_hash(hash: u64) -> String {
+    let mut hash = hash;
+    let mut buf = String::new();
+    for _ in 0..11 {
+        let octet = (hash & 63) as usize;
+        buf.push(BASE64URL[octet]);
+        hash >>= 6;
+    }
+    buf.push_str(".adv");
+    buf
+}
+
+#[cfg(test)]
 pub fn tmp_test_file_path(source: &str) -> PathBuf {
     let hash = {
         use std::hash::{Hash, Hasher};
@@ -26,7 +47,7 @@ pub fn tmp_test_file_path(source: &str) -> PathBuf {
         source.hash(&mut hasher);
         hasher.finish()
     };
-    let unique_name = format!("{hash}.adv");
+    let unique_name = base64_encode_hash(hash);
     {
         let mut tmp_source = PathBuf::from("/tmp");
         tmp_source.push(unique_name);
