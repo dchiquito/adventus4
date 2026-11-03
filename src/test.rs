@@ -24,8 +24,9 @@ macro_rules! tests {
                 let mut vm = VM::new(&bytecode, TestIO::new($in));
                 vm.push_main();
                 if let Err(e) = vm.run() {
-                    e.format(&mut std::io::stderr(), &bytecode).unwrap();
-                    panic!("unexpected error");
+                    let mut buf = vec![];
+                    e.format(&mut buf, &bytecode).unwrap();
+                    panic!("unexpected error:\n{}", str::from_utf8(&buf).unwrap());
                 }
                 let actual_output = vm.get_io().get_output();
                 assert_eq!($out, actual_output, "{}", $source);
@@ -45,7 +46,6 @@ macro_rules! tests {
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    // TODO log stderr
                     .spawn()
                     .expect("error starting cargo");
                 {
@@ -70,11 +70,23 @@ macro_rules! tests {
                         .expect("error reading output");
                     actual_output
                 };
-                assert_eq!(
-                    $out, actual_output,
-                    "{}",
-                    $source
-                );
+                if $out != actual_output {
+                    let err = {
+                        let mut err = String::new();
+                        let mut stderr = child.stderr.take().expect("error grabbing stdout");
+                        stderr
+                            .read_to_string(&mut err)
+                            .expect("error reading stderr");
+                        err
+                    };
+                    panic!(
+                        "{}\nexpected: {}\n  actual: {}\nstderr:\n{}",
+                        $source,
+                        $out,
+                        actual_output,
+                        err
+                    );
+                }
             }
         }
         tests!($($rest)*);
