@@ -33,7 +33,7 @@ fn run_internal_test(source: &str, input: &str) -> Result<String> {
 fn run_cli_test(source: &str, input: &str) -> (String, String) {
     let tmp_source = write_test_file(source).expect("error writing test file");
     let mut child = Command::new("cargo")
-        .args(["run", "--"])
+        .args(["run", "--quiet", "--"])
         .arg(&tmp_source)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -118,19 +118,18 @@ macro_rules! tests {
                 }
             }
 
-            // #[test]
-            // fn test_cli() {
-            //     let (actual_output, err) = run_cli_test($source, $in);
-            //     if $err != actual_output {
-            //         panic!(
-            //             "{}\nexpected: {}\n  actual: {}\n  stderr:\n{}",
-            //             $source,
-            //             $out,
-            //             actual_output,
-            //             err
-            //         );
-            //     }
-            // }
+            #[test]
+            fn test_cli() {
+                let (_out, actual_err) = run_cli_test($source, $in);
+                if $err != actual_err {
+                    panic!(
+                        "{}\nexpected: {}\n  actual: {}",
+                        $source,
+                        $err,
+                        actual_err,
+                    );
+                }
+            }
         }
         tests!($($rest)*);
     };
