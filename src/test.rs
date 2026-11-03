@@ -8,19 +8,26 @@ use crate::{
     vm::{TestIO, VM},
 };
 
-fn run_internal_test(source: &str, input: &str) -> String {
+#[derive(Debug)]
+enum TestError {
+    VM(String),
+}
+
+type Result<T> = std::result::Result<T, TestError>;
+
+fn run_internal_test(source: &str, input: &str) -> Result<String> {
     let bytecode = compile_test_stdlib(source);
     let mut types = Types::new(&bytecode);
     types.infer().unwrap();
     let mut vm = VM::new(&bytecode, TestIO::new(input));
     vm.push_main();
-    if let Err(e) = vm.run() {
+    vm.run().map_err(|e| {
         let mut buf = vec![];
         e.format(&mut buf, &bytecode).unwrap();
-        panic!("unexpected error:\n{}", str::from_utf8(&buf).unwrap());
-    }
+        TestError::VM(String::from_utf8(buf).unwrap())
+    })?;
     let actual_output = vm.get_io().get_output();
-    actual_output.to_string()
+    Ok(actual_output.to_string())
 }
 
 fn run_cli_test(source: &str, input: &str) -> (String, String) {
@@ -72,8 +79,12 @@ macro_rules! tests {
 
             #[test]
             fn test_internal() {
-                let actual_output = run_internal_test($source, $in);
-                assert_eq!($out, actual_output, "{}", $source);
+                match run_internal_test($source, $in) {
+                    Ok(actual_output) => assert_eq!($out, actual_output, "{}", $source),
+                    Err(TestError::VM(e)) => {
+                        panic!("{e}")
+                    }
+                }
             }
 
             #[test]
@@ -89,6 +100,37 @@ macro_rules! tests {
                     );
                 }
             }
+        }
+        tests!($($rest)*);
+    };
+    (($name:ident : $source:expr => !VM $err:expr ), $($rest:tt)*) => {
+        tests!(($name: "" => $source => !VM $err), $($rest)*);
+    };
+    (($name:ident: $in:expr => $source:expr => !VM $err:expr), $($rest:tt)*) => {
+        mod $name {
+            use super::*;
+
+            #[test]
+            fn test_internal() {
+                match run_internal_test($source, $in) {
+                    Err(TestError::VM(actual_err)) => assert_eq!($err, actual_err, "{}", $source),
+                    Ok(out) => panic!("test did not fail as expected:\n{}\nexpected: {}\nactual: {}", $source, $err, out),
+                }
+            }
+
+            // #[test]
+            // fn test_cli() {
+            //     let (actual_output, err) = run_cli_test($source, $in);
+            //     if $err != actual_output {
+            //         panic!(
+            //             "{}\nexpected: {}\n  actual: {}\n  stderr:\n{}",
+            //             $source,
+            //             $out,
+            //             actual_output,
+            //             err
+            //         );
+            //     }
+            // }
         }
         tests!($($rest)*);
     };
@@ -112,5 +154,5 @@ tests![
     (swap: "def main [1 2 swap print print]" => "1\n2\n"),
     (drop: "def main [1 2 drop print]" => "1\n"),
     (array_get: "def main [[10 empty_array] 0 array_get print]" => "0\n"),
-    (array_out_of_bounds: "def main [[10 empty_array] -1 array_get print]" => "oh no"),
+    (array_out_of_bounds: "def main [[10 empty_array] -1 array_get print]" => !VM "Run time error: IndexOutOfBounds { index: -1, len: 10 }\n- /tmp/12134431566005183982.adv:1:31: array_get\ndef main [[10 empty_array] -1 array_get print]\n"),
 ];

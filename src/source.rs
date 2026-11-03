@@ -28,7 +28,7 @@ pub fn tmp_test_file_path(source: &str) -> PathBuf {
     };
     let unique_name = format!("{hash}.adv");
     {
-        let mut tmp_source = std::env::temp_dir();
+        let mut tmp_source = PathBuf::from("/tmp");
         tmp_source.push(unique_name);
         tmp_source
     }

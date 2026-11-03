@@ -14,7 +14,7 @@ pub enum Step {
     Terminator(Terminator),
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ErrorKind {
     EmptyStack,
     ValueEncoding(u64),
@@ -36,6 +36,9 @@ impl std::fmt::Display for Error {
     }
 }
 impl Error {
+    pub fn kind(&self) -> ErrorKind {
+        self.kind.clone()
+    }
     pub fn format(&self, f: &mut impl std::io::Write, bytecode: &ByteCode) -> std::io::Result<()> {
         let SourceRef {
             source_id: id,
