@@ -284,7 +284,7 @@ impl<'b> Types<'b> {
         }
         let mut stack = vec![];
         let mut checked = HashSet::new();
-        for (root_def_id, _) in graph.iter() {
+        for root_def_id in graph.keys() {
             check_def(&graph, &mut stack, &mut checked, *root_def_id);
         }
     }
