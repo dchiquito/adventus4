@@ -1,0 +1,7 @@
+def main [
+  [1 2 +] print
+  [4 3 -] print
+  [6 7 *] print
+  [100 10 /] print
+  [100 9 /] print
+]

@@ -1,0 +1,39 @@
+def main [
+  true print
+  false print
+  "==" print_str
+  1 1 == print
+  0 1 == print
+  "!=" print_str
+  1 1 != print
+  0 1 != print
+  ">" print_str
+  0 1 > print
+  1 1 > print
+  2 1 > print
+  "<" print_str
+  0 1 < print
+  1 1 < print
+  2 1 < print
+  ">=" print_str
+  0 1 >= print
+  1 1 >= print
+  2 1 >= print
+  "<=" print_str
+  0 1 <= print
+  1 1 <= print
+  2 1 <= print
+  "and" print_str
+  false false and print
+  false true and print
+  true false and print
+  true true and print
+  "or" print_str
+  false false or print
+  false true or print
+  true false or print
+  true true or print
+  "not" print_str
+  false not print
+  true not print
+]
