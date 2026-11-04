@@ -1,0 +1,2 @@
+def true [0 0 ==]
+def false [0 0 !=]
