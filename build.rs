@@ -186,15 +186,13 @@ mod test_cases {
             r#"
     #[test]
     fn test_{id}_cli() {{
-        let mut child = Command::new("cargo")
-            .args(["run", "--quiet", "--"])
+        let mut child = Command::new(&*BINARY_PATH)
             .arg("{test_adv}")
-            .env("CARGO_BUILD_WARNINGS", "allow")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("error starting cargo");
+            .expect("error running binary");
         {{
             let mut stdin = child.stdin.take().expect("error grabbing input");
             stdin
