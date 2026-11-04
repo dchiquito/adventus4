@@ -1,0 +1,3 @@
+def main [
+  read_line print_str
+]

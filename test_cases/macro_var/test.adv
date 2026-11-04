@@ -1,0 +1,7 @@
+def foo @bar [
+  @bar
+]
+
+def main [
+  foo 1 print
+]

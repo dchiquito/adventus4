@@ -1,0 +1,12 @@
+def foo1 @bar @baz [
+  @bar
+]
+
+def foo2 @bar @baz [
+  @baz
+]
+
+def main [
+  foo1 1 2 print
+  foo2 3 4 print
+]

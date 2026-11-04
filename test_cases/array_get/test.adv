@@ -1,0 +1,4 @@
+def main [
+  [10 empty_array]
+  0 array_get print
+]

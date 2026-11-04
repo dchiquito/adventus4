@@ -1,6 +1,3 @@
-#[cfg(test)]
-use std::path::PathBuf;
-
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
