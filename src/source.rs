@@ -63,3 +63,20 @@ pub fn write_test_file(source: &str) -> std::io::Result<PathBuf> {
     std::fs::write(&path, source)?;
     Ok(path)
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_read_source_file() {
+        for lib in LIBS {
+            assert!(!read_source_file(lib).is_empty());
+        }
+    }
+    #[test]
+    #[should_panic]
+    fn test_read_source_file_panics() {
+        read_source_file("lib/does_not_exist");
+    }
+}
