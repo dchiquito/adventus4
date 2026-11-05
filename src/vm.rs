@@ -4,8 +4,7 @@ use crate::{bytecode::ClosureId, source};
 use std::{fmt::Write, io::BufRead, ops::Range, slice::Iter};
 
 use crate::bytecode::{
-    BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpCode, PropId, SourceRef,
-    Terminator,
+    BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpCode, PropId, Span, Terminator,
 };
 
 #[derive(Debug)]
@@ -26,7 +25,7 @@ pub enum ErrorKind {
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
-    source_ref: SourceRef,
+    span: Span,
 }
 impl std::error::Error for Error {}
 impl std::fmt::Display for Error {
@@ -40,10 +39,10 @@ impl Error {
         self.kind.clone()
     }
     pub fn format(&self, f: &mut impl std::io::Write, bytecode: &ByteCode) -> std::io::Result<()> {
-        let SourceRef {
+        let Span {
             source_id: id,
             range,
-        } = self.source_ref.clone();
+        } = self.span.clone();
         let name = bytecode.source_map.get_source_name(id);
         let source = source::read_source_file(name);
         let line_number = self.get_line_number(&source);
@@ -59,7 +58,7 @@ impl Error {
         Ok(())
     }
     fn get_source_line_extents(&self, source: &str) -> Range<usize> {
-        let range = &self.source_ref.range;
+        let range = &self.span.range;
         let start_offset = source.as_bytes()[..range.start]
             .iter()
             .rev()
@@ -73,7 +72,7 @@ impl Error {
     }
     fn get_line_number(&self, source: &str) -> usize {
         let mut lines = 1;
-        for i in 0..self.source_ref.range.start {
+        for i in 0..self.span.range.start {
             if source.as_bytes()[i] == b'\n' {
                 lines += 1;
             }
@@ -469,11 +468,11 @@ impl<'a, T: IO> VM<'a, T> {
 impl<T: IO> VM<'_, T> {
     fn error(&self, kind: ErrorKind) -> Error {
         let frame = self.call_stack.last().expect("nothing on call stack");
-        let source_ref = self
+        let span = self
             .bytecode
             .source_map
             .get(frame.block_id, frame.pc.saturating_sub(1));
-        Error { kind, source_ref }
+        Error { kind, span }
     }
     pub fn pop_raw(&mut self) -> Result<u64> {
         self.stack

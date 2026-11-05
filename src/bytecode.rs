@@ -401,7 +401,7 @@ impl Closure {
 pub struct SourceId(usize);
 
 #[derive(Clone, Debug, Default)]
-pub struct SourceRef {
+pub struct Span {
     pub source_id: SourceId,
     pub range: Range<usize>,
 }
@@ -409,7 +409,7 @@ pub struct SourceRef {
 #[derive(Clone, Debug, Default)]
 pub struct SourceMap {
     source_names: Vec<String>,
-    map: HashMap<BlockId, Vec<SourceRef>>,
+    map: HashMap<BlockId, Vec<Span>>,
 }
 impl SourceMap {
     pub fn new_source(&mut self, source_name: &str) -> SourceId {
@@ -421,9 +421,9 @@ impl SourceMap {
         self.map
             .entry(block_id)
             .or_default()
-            .push(SourceRef { source_id, range });
+            .push(Span { source_id, range });
     }
-    pub fn get(&self, block_id: BlockId, index: usize) -> SourceRef {
+    pub fn get(&self, block_id: BlockId, index: usize) -> Span {
         self.map.get(&block_id).unwrap()[index].clone()
     }
     pub fn get_source_name(&self, source_id: SourceId) -> &str {
