@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Write, ops::Range};
 
-use crate::type_check::StackMutation;
+use crate::type_check::Signature;
 
 #[derive(Copy, Clone, Debug)]
 pub enum OpCode {
@@ -363,7 +363,7 @@ pub struct Definition {
     pub block_id: BlockId,
     local_count: usize,
     pub closure_count: usize,
-    pub declared_type: Option<StackMutation>,
+    pub declared_type: Option<Signature>,
 }
 impl Definition {
     pub fn new(block_id: BlockId, closure_count: usize) -> Self {

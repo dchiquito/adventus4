@@ -9,7 +9,7 @@ use crate::bytecode::{
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     CannotUnite(Type, Type),
-    CannotReconcile(StackMutation, StackMutation),
+    CannotReconcile(Signature, Signature),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -57,32 +57,32 @@ impl Type {
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
-pub struct StackMutation {
+pub struct Signature {
     before: Vec<Type>,
     after: Vec<Type>,
 }
-impl StackMutation {
+impl Signature {
     pub fn new(before: Vec<Type>, after: Vec<Type>) -> Self {
         Self { before, after }
     }
 }
-macro_rules! stack_mutation {
+macro_rules! signature {
     // (=>) => {
-    //     StackMutation {
+    //     Signature {
     //         before: vec![],
     //         after: vec![],
     //     }
     // };
     ($($l_field:ident $(($l_prop:tt))? )* => $($r_field:ident $(($r_prop:tt))?)*) => {
-        StackMutation {
-            before: stack_mutation!(stack_state $($l_field $(($l_prop))?)*),
-            after: stack_mutation!(stack_state $($r_field $(($r_prop))?)*),
+        Signature {
+            before: signature!(stack_state $($l_field $(($l_prop))?)*),
+            after: signature!(stack_state $($r_field $(($r_prop))?)*),
         }
     };
     // ([$($lhs:tt)*] => [$($rhs:tt)*]) => {
-    //     StackMutation {
-    //         before: stack_mutation!(stack_state $($lhs)*),
-    //         after: stack_mutation!(stack_state $($rhs)*),
+    //     Signature {
+    //         before: signature!(stack_state $($lhs)*),
+    //         after: signature!(stack_state $($rhs)*),
     //     }
     // };
     (stack_state) => {
@@ -92,57 +92,57 @@ macro_rules! stack_mutation {
         #[allow(clippy::vec_init_then_push)]
         {
             let mut v = vec![];
-            stack_mutation!(expand, v; $($stack)*);
+            signature!(expand, v; $($stack)*);
             v
         }
     }};
     (expand, $v:expr; Type $($stack:tt)*) => {
         $v.push(Type::Builtin(BuiltinType::Type));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr;) => {};
     (expand, $v:expr; Int $($stack:tt)*) => {
         $v.push(Type::Builtin(BuiltinType::Int));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Char $($stack:tt)*) => {
         $v.push(Type::Builtin(BuiltinType::Char));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Bool $($stack:tt)*) => {
         $v.push(Type::Builtin(BuiltinType::Bool));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; None $($stack:tt)*) => {
         $v.push(Type::Builtin(BuiltinType::None));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; DefId($def_id:expr) $($stack:tt)*) => {
         $v.push(Type::DefId($def_id));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; ClosureId($def_id:expr) $($stack:tt)*) => {
         $v.push(Type::ClosureId($def_id));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Unknown $($stack:tt)*) => {
         $v.push(Type::Unknown);
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; Object($layout_id:expr) $($stack:tt)*) => {
         $v.push(Type::Object($layout_id));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
     (expand, $v:expr; T($a:expr) $($stack:tt)*) => {
         $v.push(Type::Generic($a));
-        stack_mutation!(expand, $v; $($stack)*);
+        signature!(expand, $v; $($stack)*);
     };
 }
-impl StackMutation {
-    /// Create a new StackMutation representing the union of an initial block state
+impl Signature {
+    /// Create a new Signature representing the union of an initial block state
     /// with a new one. Extend before appropriately, and return an error if after
     /// is different.
-    fn reconcile(&self, other: &StackMutation) -> Result<StackMutation> {
+    fn reconcile(&self, other: &Signature) -> Result<Signature> {
         trace!("hmmmmm {:?} :: {:?}", self, other);
         let before = {
             let (shorter, longer) = if self.before.len() <= other.before.len() {
@@ -169,10 +169,10 @@ impl StackMutation {
                     .collect::<Result<Vec<Type>>>()?
             }
         };
-        Ok(StackMutation { before, after })
+        Ok(Signature { before, after })
     }
 }
-impl std::fmt::Debug for StackMutation {
+impl std::fmt::Debug for Signature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for b in self.before.iter() {
             write!(f, "{b:?} ")?;
@@ -188,7 +188,7 @@ impl std::fmt::Debug for StackMutation {
 #[derive(Debug)]
 pub struct Types<'b> {
     bytecode: &'b ByteCode,
-    def_types: HashMap<(DefId, Vec<StackMutation>), StackMutation>,
+    def_types: HashMap<(DefId, Vec<Signature>), Signature>,
     current_generic: GenericId,
     generics: HashMap<GenericId, Type>,
 }
@@ -289,11 +289,7 @@ impl<'b> Types<'b> {
         }
     }
     /// Get the cached type of a def, or infer it if it is not yet cached.
-    fn type_of_def(
-        &mut self,
-        def_id: DefId,
-        closures: Vec<StackMutation>,
-    ) -> Result<&StackMutation> {
+    fn type_of_def(&mut self, def_id: DefId, closures: Vec<Signature>) -> Result<&Signature> {
         // First, check the precomputed cache
         if self.def_types.contains_key(&(def_id, closures.clone())) {
             Ok(self.def_types.get(&(def_id, closures)).unwrap())
@@ -319,7 +315,7 @@ impl<'b> Types<'b> {
         self.current_generic = self.current_generic.incr();
         g
     }
-    fn chain(&mut self, left: &StackMutation, right: &StackMutation) -> StackMutation {
+    fn chain(&mut self, left: &Signature, right: &Signature) -> Signature {
         for (lhs, rhs) in left.after.iter().rev().zip(right.before.iter().rev()) {
             if let Type::Generic(t) = lhs {
                 if !self.generics.contains_key(t) {
@@ -342,7 +338,7 @@ impl<'b> Types<'b> {
             // = (a->b)
             let mut after = Vec::from(&left.after[..(left.after.len() - right.before.len())]);
             after.append(&mut right.after.clone());
-            StackMutation {
+            Signature {
                 before: left.before.clone(),
                 after,
             }
@@ -353,7 +349,7 @@ impl<'b> Types<'b> {
             let mut before = Vec::from(&right.before[..right.before.len() - left.after.len()]);
             before.append(&mut left.before.clone());
             let after = right.after.clone();
-            StackMutation { before, after }
+            Signature { before, after }
         };
         {
             for b in mutation.before.iter_mut() {
@@ -377,13 +373,13 @@ impl<'b> Types<'b> {
 
 struct DefInferer<'a, 'b> {
     types: &'a mut Types<'b>,
-    closures: Vec<StackMutation>,
-    blocks: HashMap<BlockId, StackMutation>,
-    current_type: StackMutation,
-    return_type: Option<StackMutation>,
+    closures: Vec<Signature>,
+    blocks: HashMap<BlockId, Signature>,
+    current_type: Signature,
+    return_type: Option<Signature>,
 }
 impl<'a, 'b> DefInferer<'a, 'b> {
-    fn infer(types: &'a mut Types<'b>, def_id: DefId) -> Result<Option<StackMutation>> {
+    fn infer(types: &'a mut Types<'b>, def_id: DefId) -> Result<Option<Signature>> {
         trace!("BEGIN INFERENCE OF {def_id:?}");
         let def = types.bytecode.get_def(def_id);
         if def.closure_count == 0 {
@@ -395,14 +391,14 @@ impl<'a, 'b> DefInferer<'a, 'b> {
     fn infer_with_closures(
         types: &'a mut Types<'b>,
         def_id: DefId,
-        closures: Vec<StackMutation>,
-    ) -> Result<StackMutation> {
+        closures: Vec<Signature>,
+    ) -> Result<Signature> {
         Self::new(types, closures).infer_def(def_id)
     }
-    fn new(types: &'a mut Types<'b>, closures: Vec<StackMutation>) -> Self {
+    fn new(types: &'a mut Types<'b>, closures: Vec<Signature>) -> Self {
         let blocks = Default::default();
         let return_type = None;
-        let current_type = stack_mutation!(=>);
+        let current_type = signature!(=>);
         Self {
             types,
             closures,
@@ -411,7 +407,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             return_type,
         }
     }
-    fn infer_def(mut self, def_id: DefId) -> Result<StackMutation> {
+    fn infer_def(mut self, def_id: DefId) -> Result<Signature> {
         let name = self.types.bytecode.name_of_def(def_id);
         let def = self.types.bytecode.get_def(def_id);
         debug!(
@@ -430,9 +426,9 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         self.blocks.insert(block_id, self.current_type.clone());
         let block = self.types.bytecode.get_block(block_id);
         for op in block.iter() {
-            let sm = self.infer_op(op)?;
-            trace!("Inferred {op:?} to be {sm:?}");
-            self.current_type = self.types.chain(&self.current_type, &sm);
+            let sig = self.infer_op(op)?;
+            trace!("Inferred {op:?} to be {sig:?}");
+            self.current_type = self.types.chain(&self.current_type, &sig);
         }
         match block.terminator {
             Terminator::Return => {
@@ -459,9 +455,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             }
             Terminator::GoToIf { then, or_else } => {
                 // Consume the boolean
-                self.current_type = self
-                    .types
-                    .chain(&self.current_type, &stack_mutation!(Bool=>));
+                self.current_type = self.types.chain(&self.current_type, &signature!(Bool=>));
                 let mut then_type = self.current_type.clone();
                 if let Some(previous_type) = self.blocks.get(&then) {
                     self.current_type = self.current_type.reconcile(previous_type)?;
@@ -483,11 +477,11 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         }
         Ok(())
     }
-    fn infer_op(&mut self, op: Op) -> Result<StackMutation> {
+    fn infer_op(&mut self, op: Op) -> Result<Signature> {
         trace!("Inferring type of {op:?}");
         Ok(match op {
-            Op::Integer(_) => stack_mutation!(=>Int),
-            Op::Character(_) => stack_mutation!(=>Char),
+            Op::Integer(_) => signature!(=>Int),
+            Op::Character(_) => signature!(=>Char),
             Op::Call(def_id) => {
                 trace!("Call to {def_id:?}: {:?}!!!", self.current_type);
                 let def = self.types.bytecode.get_def(def_id);
@@ -502,7 +496,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                     .cloned()
                     .collect();
                 trace!("before: {before:?}");
-                let closures: Vec<StackMutation> = before
+                let closures: Vec<Signature> = before
                     .iter()
                     .map(|t| {
                         if let Type::ClosureId(closure_id) = t {
@@ -510,7 +504,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                             let closure = self.types.bytecode.get_closure(*closure_id);
                             let block_id = closure.block_id;
                             // Save the current_type to restore later
-                            let mut closure_type = stack_mutation!(=>);
+                            let mut closure_type = signature!(=>);
                             std::mem::swap(&mut self.current_type, &mut closure_type);
                             self.walk_block(block_id)?;
                             // Swap current_type to restore it and retrieve the
@@ -521,9 +515,9 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                             unreachable!("compilation error: not enough closures")
                         }
                     })
-                    .collect::<Result<Vec<StackMutation>>>()?;
+                    .collect::<Result<Vec<Signature>>>()?;
                 trace!("closures: {closures:?}");
-                let closure_consumer = StackMutation {
+                let closure_consumer = Signature {
                     before,
                     after: vec![],
                 };
@@ -535,55 +529,55 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 trace!("Calling closure {idx} with closures {:?}", self.closures);
                 self.closures[idx].clone()
             }
-            Op::ClosureId(closure_id) => stack_mutation!(=>ClosureId(closure_id)),
+            Op::ClosureId(closure_id) => signature!(=>ClosureId(closure_id)),
             Op::Dup => {
                 let a = self.types.new_generic();
-                stack_mutation!(T(a)=>T(a) T(a))
+                signature!(T(a)=>T(a) T(a))
             }
             Op::Swap => {
                 let a = self.types.new_generic();
                 let b = self.types.new_generic();
-                stack_mutation!(T(a) T(b)=>T(b) T(a))
+                signature!(T(a) T(b)=>T(b) T(a))
             }
             Op::Drop => {
                 let a = self.types.new_generic();
-                stack_mutation!(T(a)=>)
+                signature!(T(a)=>)
             }
-            Op::BindLocal(_local_id) => stack_mutation!(Unknown=>),
-            Op::PushLocal(_local_id) => stack_mutation!(=>Unknown),
-            Op::BindProp(_prop_id) => stack_mutation!(Unknown Unknown=>),
-            Op::PushProp(_prop_id) => stack_mutation!(Unknown=>Unknown),
-            Op::Add => stack_mutation!(Int Int=>Int),
-            Op::Sub => stack_mutation!(Int Int=>Int),
-            Op::Mul => stack_mutation!(Int Int=>Int),
-            Op::Div => stack_mutation!(Int Int=>Int),
-            Op::Eq => stack_mutation!(Int Int=>Bool),
-            Op::Ne => stack_mutation!(Int Int=>Bool),
-            Op::Gt => stack_mutation!(Int Int=>Bool),
-            Op::Lt => stack_mutation!(Int Int=>Bool),
-            Op::Gte => stack_mutation!(Int Int=>Bool),
-            Op::Lte => stack_mutation!(Int Int=>Bool),
-            Op::And => stack_mutation!(Bool Bool=>Bool),
-            Op::Or => stack_mutation!(Bool Bool=>Bool),
-            Op::Not => stack_mutation!(Bool=>Bool),
-            Op::Print => stack_mutation!(Unknown=>),
-            Op::PrintStr => stack_mutation!(Unknown=>),
+            Op::BindLocal(_local_id) => signature!(Unknown=>),
+            Op::PushLocal(_local_id) => signature!(=>Unknown),
+            Op::BindProp(_prop_id) => signature!(Unknown Unknown=>),
+            Op::PushProp(_prop_id) => signature!(Unknown=>Unknown),
+            Op::Add => signature!(Int Int=>Int),
+            Op::Sub => signature!(Int Int=>Int),
+            Op::Mul => signature!(Int Int=>Int),
+            Op::Div => signature!(Int Int=>Int),
+            Op::Eq => signature!(Int Int=>Bool),
+            Op::Ne => signature!(Int Int=>Bool),
+            Op::Gt => signature!(Int Int=>Bool),
+            Op::Lt => signature!(Int Int=>Bool),
+            Op::Gte => signature!(Int Int=>Bool),
+            Op::Lte => signature!(Int Int=>Bool),
+            Op::And => signature!(Bool Bool=>Bool),
+            Op::Or => signature!(Bool Bool=>Bool),
+            Op::Not => signature!(Bool=>Bool),
+            Op::Print => signature!(Unknown=>),
+            Op::PrintStr => signature!(Unknown=>),
             Op::ReadLine => {
                 let layout_id = self.types.bytecode.get_list_layout_id();
-                stack_mutation!(=>Object(layout_id))
+                signature!(=>Object(layout_id))
             }
-            Op::Layout(layout_id) => stack_mutation!(=>Object(layout_id)),
+            Op::Layout(layout_id) => signature!(=>Object(layout_id)),
             Op::Malloc(layout_id) => {
-                let mut sm = stack_mutation!(=>Object(layout_id));
+                let mut sig = signature!(=>Object(layout_id));
                 let props = self.types.bytecode.layouts.get(&layout_id).unwrap();
                 for _prop_id in props.iter() {
-                    sm.before.push(Type::Unknown);
+                    sig.before.push(Type::Unknown);
                 }
-                sm
+                sig
             }
-            Op::EmptyArray => stack_mutation!(Int => Unknown),
-            Op::ArrayGet => stack_mutation!(Unknown Int => Unknown),
-            Op::ArraySet => stack_mutation!(Unknown Int Unknown =>),
+            Op::EmptyArray => signature!(Int => Unknown),
+            Op::ArrayGet => signature!(Unknown Int => Unknown),
+            Op::ArraySet => signature!(Unknown Int Unknown =>),
         })
     }
 }
@@ -595,32 +589,32 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_chain_stack_mutations() {
-        macro_rules! test_stack_mutation{
+    fn test_chain_signatures() {
+        macro_rules! test_signatures{
             (($($b1:ident) * => $($a1:ident) *) + ($($b2:ident) * => $($a2:ident) *) == ($($b3:ident) * => $($a3:ident) *)) => {{
                 let bc = ByteCode::default();
                 let mut types = Types::new(&bc);
             assert_eq!(
                 types.chain(
-                    &stack_mutation!($($b1) * => $($a1) *),
-                    &stack_mutation!($($b2) * => $($a2) *)
+                    &signature!($($b1) * => $($a1) *),
+                    &signature!($($b2) * => $($a2) *)
                 ),
-                stack_mutation!($($b3) * => $($a3) *)
+                signature!($($b3) * => $($a3) *)
             );
             }}
         }
-        test_stack_mutation!((=>) + (=>) == (=>));
-        test_stack_mutation!((Int=>) + (=>) == (Int=>));
-        test_stack_mutation!((Int Int=>) + (=>) == (Int Int=>));
-        test_stack_mutation!((=>) + (=>Int) == (=>Int));
-        test_stack_mutation!((=>) + (=>Int Int) == (=>Int Int));
-        test_stack_mutation!((=>Int) + (Int=>) == (=>));
-        test_stack_mutation!((Int=>Int) + (Int=>) == (Int=>));
-        test_stack_mutation!((=>Int) + (Int=>Int) == (=>Int));
-        test_stack_mutation!((Int=>Int) + (Int=>Int) == (Int=>Int));
-        test_stack_mutation!((=>Int) + (=>) == (=>Int));
-        test_stack_mutation!((=>) + (Int=>) == (Int=>));
-        test_stack_mutation!((=>Char) + (Int Char=>) == (Int=>));
+        test_signatures!((=>) + (=>) == (=>));
+        test_signatures!((Int=>) + (=>) == (Int=>));
+        test_signatures!((Int Int=>) + (=>) == (Int Int=>));
+        test_signatures!((=>) + (=>Int) == (=>Int));
+        test_signatures!((=>) + (=>Int Int) == (=>Int Int));
+        test_signatures!((=>Int) + (Int=>) == (=>));
+        test_signatures!((Int=>Int) + (Int=>) == (Int=>));
+        test_signatures!((=>Int) + (Int=>Int) == (=>Int));
+        test_signatures!((Int=>Int) + (Int=>Int) == (Int=>Int));
+        test_signatures!((=>Int) + (=>) == (=>Int));
+        test_signatures!((=>) + (Int=>) == (Int=>));
+        test_signatures!((=>Char) + (Int Char=>) == (Int=>));
     }
 
     macro_rules! infer_def_results {
@@ -631,7 +625,7 @@ mod test {
             bytecode
                 .iter_def_ids()
                 .map(|def_id| DefInferer::infer(&mut types, def_id).map(Option::unwrap))
-                .collect::<Vec<Result<StackMutation>>>()
+                .collect::<Vec<Result<Signature>>>()
         }};
     }
     macro_rules! infer_defs {
@@ -642,98 +636,92 @@ mod test {
             bytecode
                 .iter_def_ids()
                 .map(|def_id| DefInferer::infer(&mut types, def_id).unwrap().unwrap())
-                .collect::<Vec<StackMutation>>()
+                .collect::<Vec<Signature>>()
         }};
     }
 
     #[test]
     fn test_simple() {
-        assert_eq!(infer_defs!("def one [1]"), [stack_mutation!(=> Int)]);
-        assert_eq!(infer_defs!("def two [1 2]"), [stack_mutation!(=> Int Int)]);
-        assert_eq!(infer_defs!("def three [1 2 +]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def one [1]"), [signature!(=> Int)]);
+        assert_eq!(infer_defs!("def two [1 2]"), [signature!(=> Int Int)]);
+        assert_eq!(infer_defs!("def three [1 2 +]"), [signature!(=> Int)]);
         assert_eq!(
             infer_defs!("def three [1 2 +] def four [5 1 -]"),
-            [stack_mutation!(=> Int), stack_mutation!(=> Int)]
+            [signature!(=> Int), signature!(=> Int)]
         );
         assert_eq!(
             infer_defs!("def one [1] def two [one one +]"),
-            [stack_mutation!(=> Int), stack_mutation!(=> Int)]
+            [signature!(=> Int), signature!(=> Int)]
         );
     }
     #[test]
     fn test_types() {
-        assert_eq!(infer_defs!("def zero [0]"), [stack_mutation!(=> Int)]);
-        assert_eq!(infer_defs!("def a ['a']"), [stack_mutation!(=> Char)]);
+        assert_eq!(infer_defs!("def zero [0]"), [signature!(=> Int)]);
+        assert_eq!(infer_defs!("def a ['a']"), [signature!(=> Char)]);
         // TODO use builtins
-        assert_eq!(infer_defs!("def t [1 1 ==]"), [stack_mutation!(=> Bool)]);
-        assert_eq!(infer_defs!("def f [1 2 ==]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def t [1 1 ==]"), [signature!(=> Bool)]);
+        assert_eq!(infer_defs!("def f [1 2 ==]"), [signature!(=> Bool)]);
     }
     #[test]
     fn test_arithmetic() {
-        assert_eq!(infer_defs!("def add [1 2 +]"), [stack_mutation!(=> Int)]);
-        assert_eq!(infer_defs!("def sub [1 2 -]"), [stack_mutation!(=> Int)]);
-        assert_eq!(infer_defs!("def mul [1 2 *]"), [stack_mutation!(=> Int)]);
-        assert_eq!(infer_defs!("def div [1 2 /]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def add [1 2 +]"), [signature!(=> Int)]);
+        assert_eq!(infer_defs!("def sub [1 2 -]"), [signature!(=> Int)]);
+        assert_eq!(infer_defs!("def mul [1 2 *]"), [signature!(=> Int)]);
+        assert_eq!(infer_defs!("def div [1 2 /]"), [signature!(=> Int)]);
     }
     #[test]
     fn test_comparison() {
-        assert_eq!(infer_defs!("def eq [1 2 ==]"), [stack_mutation!(=> Bool)]);
-        assert_eq!(infer_defs!("def neq [1 2 !=]"), [stack_mutation!(=> Bool)]);
-        assert_eq!(infer_defs!("def gt [1 2 >]"), [stack_mutation!(=> Bool)]);
-        assert_eq!(infer_defs!("def lt [1 2 <]"), [stack_mutation!(=> Bool)]);
-        assert_eq!(infer_defs!("def gte [1 2 >=]"), [stack_mutation!(=> Bool)]);
-        assert_eq!(infer_defs!("def lte [1 2 <=]"), [stack_mutation!(=> Bool)]);
+        assert_eq!(infer_defs!("def eq [1 2 ==]"), [signature!(=> Bool)]);
+        assert_eq!(infer_defs!("def neq [1 2 !=]"), [signature!(=> Bool)]);
+        assert_eq!(infer_defs!("def gt [1 2 >]"), [signature!(=> Bool)]);
+        assert_eq!(infer_defs!("def lt [1 2 <]"), [signature!(=> Bool)]);
+        assert_eq!(infer_defs!("def gte [1 2 >=]"), [signature!(=> Bool)]);
+        assert_eq!(infer_defs!("def lte [1 2 <=]"), [signature!(=> Bool)]);
     }
     #[test]
     fn test_bool_ops() {
         // TODO use builtins
         assert_eq!(
             infer_defs!("def and [[1 1 ==] [1 1 ==] and]"),
-            [stack_mutation!(=> Bool)]
+            [signature!(=> Bool)]
         );
         assert_eq!(
             infer_defs!("def or [[1 1 ==] [1 1 ==] or]"),
-            [stack_mutation!(=> Bool)]
+            [signature!(=> Bool)]
         );
-        assert_eq!(
-            infer_defs!("def not [[1 1 ==] not]"),
-            [stack_mutation!(=> Bool)]
-        );
+        assert_eq!(infer_defs!("def not [[1 1 ==] not]"), [signature!(=> Bool)]);
     }
     #[test]
     fn test_dup() {
-        assert_eq!(
-            infer_defs!("def clone [1 dup]"),
-            [stack_mutation!(=> Int Int)]
-        );
+        assert_eq!(infer_defs!("def clone [1 dup]"), [signature!(=> Int Int)]);
     }
     #[test]
     fn test_drop() {
-        assert_eq!(infer_defs!("def nothin [1 drop]"), [stack_mutation!(=> )]);
+        assert_eq!(infer_defs!("def nothin [1 drop]"), [signature!(=> )]);
     }
     #[test]
     fn test_swap() {
         assert_eq!(
             infer_defs!("def exchange ['1' 2 swap]"),
-            [stack_mutation!(=> Int Char)]
+            [signature!(=> Int Char)]
         );
     }
     #[test]
     fn test_return() {
-        assert_eq!(infer_defs!("def one [1 return]"), [stack_mutation!(=> Int)]);
+        assert_eq!(infer_defs!("def one [1 return]"), [signature!(=> Int)]);
     }
     #[test]
     fn test_if() {
         assert_eq!(
             infer_defs!("def one [[1 1 ==] if [1] else [2]]"),
-            [stack_mutation!(=> Int)]
+            [signature!(=> Int)]
         );
     }
     #[test]
     fn test_if_return() {
         assert_eq!(
             infer_defs!("def one [[1 1 ==] if [1 return] else [2 return]]"),
-            [stack_mutation!(=> Int)]
+            [signature!(=> Int)]
         );
     }
     #[test]
@@ -747,8 +735,8 @@ mod test {
             ]"
             ),
             [Err(Error::CannotReconcile(
-                stack_mutation!(=>Int),
-                stack_mutation!(=>)
+                signature!(=>Int),
+                signature!(=>)
             ))]
         );
     }

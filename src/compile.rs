@@ -13,7 +13,7 @@ use crate::{
         BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
         Terminator,
     },
-    type_check::{BuiltinType, StackMutation, Type},
+    type_check::{BuiltinType, Signature, Type},
     vm::{TestIO, VM},
 };
 
@@ -206,7 +206,7 @@ impl<'s> Compiler<'s> {
             def_compiler.compile_def(cursor, block_id);
         }
     }
-    fn compile_signature(&mut self, cursor: &mut TreeCursor) -> StackMutation {
+    fn compile_signature(&mut self, cursor: &mut TreeCursor) -> Signature {
         assert_node_id!(cursor, SIGNATURE, "signature");
         goto_first_child!(cursor);
         goto_next_sibling!(cursor); // (
@@ -222,7 +222,7 @@ impl<'s> Compiler<'s> {
             goto_next_sibling!(cursor);
         }
         goto_parent!(cursor);
-        StackMutation::new(before, after)
+        Signature::new(before, after)
     }
     fn compile_type(&mut self, cursor: &mut TreeCursor) -> Type {
         assert_node_id!(cursor, TYPE, "type");
