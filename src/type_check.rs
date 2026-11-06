@@ -26,7 +26,7 @@ pub enum BuiltinType {
     None,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GenericId(u64);
 impl GenericId {
     pub fn incr(&self) -> Self {
@@ -53,6 +53,20 @@ impl Type {
             Ok(right.clone())
         } else if right == &Type::Unknown {
             Ok(left.clone())
+        } else if let Type::Generic(left_gen_id) = left {
+            if let Type::Generic(right_gen_id) = right {
+                // Always keep the lesser generic to avoid loops
+                if left_gen_id < right_gen_id {
+                    types.manifest_generic(*left_gen_id, right.clone());
+                    Ok(right.clone())
+                } else {
+                    types.manifest_generic(*right_gen_id, left.clone());
+                    Ok(left.clone())
+                }
+            } else {
+                types.manifest_generic(*left_gen_id, right.clone());
+                Ok(right.clone())
+            }
         } else {
             Err(Error::CannotUnite(left.clone(), right.clone()))
         }
@@ -339,6 +353,9 @@ impl<'b> Types<'b> {
         self.current_generic = self.current_generic.incr();
         g
     }
+    fn manifest_generic(&mut self, generic_id: GenericId, manifested_type: Type) {
+        self.generics.insert(generic_id, manifested_type);
+    }
     fn chain_spanned(
         &mut self,
         left: &SpannedSignature,
@@ -355,6 +372,7 @@ impl<'b> Types<'b> {
     }
     fn chain(&mut self, left: &Signature, right: &Signature) -> Signature {
         for (lhs, rhs) in left.after.iter().rev().zip(right.before.iter().rev()) {
+            // TODO use union to join these
             if let Type::Generic(t) = lhs {
                 if !self.generics.contains_key(t) {
                     self.generics.insert(*t, lhs.clone());
