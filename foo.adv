@@ -1,6 +1,3 @@
-def fub @bar @baz [
-  @bar @baz
-]
 def main [
-  fub 123 print
+  10 10 %
 ]

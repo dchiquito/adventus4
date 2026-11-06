@@ -78,8 +78,7 @@ enum Builtin {
     And,
     Or,
     Not,
-    Print,
-    PrintStr,
+    PutChar,
     ReadLine,
     Break,
     Return,
@@ -98,8 +97,7 @@ impl TryFrom<&str> for Builtin {
             "and" => Builtin::And,
             "or" => Builtin::Or,
             "not" => Builtin::Not,
-            "print" => Builtin::Print,
-            "print_str" => Builtin::PrintStr,
+            "put_char" => Builtin::PutChar,
             "read_line" => Builtin::ReadLine,
             "break" => Builtin::Break,
             "return" => Builtin::Return,
@@ -371,8 +369,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
                 Builtin::And => Some(Op::And),
                 Builtin::Or => Some(Op::Or),
                 Builtin::Not => Some(Op::Not),
-                Builtin::Print => Some(Op::Print),
-                Builtin::PrintStr => Some(Op::PrintStr),
+                Builtin::PutChar => Some(Op::PutChar),
                 Builtin::ReadLine => Some(Op::ReadLine),
                 Builtin::Break => {
                     self.set_terminator(Terminator::GoTo(
@@ -566,6 +563,7 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
             SUB => self.compile_sub(cursor),
             MUL => self.compile_mul(cursor),
             DIV => self.compile_div(cursor),
+            MOD => self.compile_mod(cursor),
             EQ => self.compile_eq(cursor),
             NE => self.compile_ne(cursor),
             GT => self.compile_gt(cursor),
@@ -746,6 +744,7 @@ impl BlockCompiler<'_, '_, '_> {
     compile_builtin_method!(compile_sub, sub, Sub, SUB);
     compile_builtin_method!(compile_mul, mul, Mul, MUL);
     compile_builtin_method!(compile_div, div, Div, DIV);
+    compile_builtin_method!(compile_mod, mod, Mod, MOD);
     compile_builtin_method!(compile_eq, eq, Eq, EQ);
     compile_builtin_method!(compile_ne, ne, Ne, NE);
     compile_builtin_method!(compile_gt, gt, Gt, GT);

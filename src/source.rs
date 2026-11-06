@@ -3,15 +3,22 @@ use std::{collections::HashMap, ops::Range, path::PathBuf};
 use crate::bytecode::{SourceId, SourceMap, Span};
 
 const BOOL_ADV: &str = include_str!("../lib/bool.adv");
+const IO_ADV: &str = include_str!("../lib/io.adv");
 const RANGE_ADV: &str = include_str!("../lib/range.adv");
 const LIST_ADV: &str = include_str!("../lib/list.adv");
-pub const LIBS: [&str; 3] = ["lib/bool.adv", "lib/range.adv", "lib/list.adv"];
+pub const LIBS: [&str; 4] = [
+    "lib/bool.adv",
+    "lib/io.adv",
+    "lib/range.adv",
+    "lib/list.adv",
+];
 
 pub fn read_source_file(source_name: &str) -> String {
     let path = PathBuf::from(source_name);
     if path.starts_with("lib") {
         match source_name {
             "lib/bool.adv" => BOOL_ADV.to_string(),
+            "lib/io.adv" => IO_ADV.to_string(),
             "lib/list.adv" => LIST_ADV.to_string(),
             "lib/range.adv" => RANGE_ADV.to_string(),
             _ => panic!("no source lib {source_name}"),

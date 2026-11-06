@@ -40,6 +40,10 @@
           "named": true
         },
         {
+          "type": "mod",
+          "named": true
+        },
+        {
           "type": "mul",
           "named": true
         },
@@ -602,6 +606,10 @@
   },
   {
     "type": "lte",
+    "named": true
+  },
+  {
+    "type": "mod",
     "named": true
   },
   {

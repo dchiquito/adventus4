@@ -1,0 +1,13 @@
+def str_to_int [
+  0 >$sum
+  0 >$i
+  loop [
+    dup.len $i <= if break
+    [dup $i get] $sum + >$sum
+    $i 1 + >$i
+  ]
+  drop $sum
+]
+def main [
+  "123" str_to_int print
+]

@@ -17,8 +17,8 @@ fn main() {
             bytecode.pretty_print(&mut buf).unwrap();
             log::debug!("{buf}");
         }
-        let mut types = Types::new(&bytecode);
-        types.infer().expect("type error");
+        // let mut types = Types::new(&bytecode);
+        // types.infer().expect("type error");
 
         let mut vm = VM::new(&bytecode, StdIO::default());
         vm.push_main();

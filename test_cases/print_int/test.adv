@@ -1,0 +1,23 @@
+def main [
+  0 print_int
+  1 print_int
+  2 print_int
+  3 print_int
+  4 print_int
+  5 print_int
+  6 print_int
+  7 print_int
+  8 print_int
+  9 print_int
+  10 print_int
+  11 print_int
+  19 print_int
+  99 print_int
+  100 print_int
+  999 print_int
+  123456789 print_int
+  -1 print_int
+  -9 print_int
+  -10 print_int
+  -123456789 print_int
+]

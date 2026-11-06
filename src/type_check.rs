@@ -639,6 +639,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::Sub => signature!(Int Int=>Int),
             Op::Mul => signature!(Int Int=>Int),
             Op::Div => signature!(Int Int=>Int),
+            Op::Mod => signature!(Int Int=>Int),
             Op::Eq => signature!(Int Int=>Bool),
             Op::Ne => signature!(Int Int=>Bool),
             Op::Gt => signature!(Int Int=>Bool),
@@ -648,8 +649,8 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             Op::And => signature!(Bool Bool=>Bool),
             Op::Or => signature!(Bool Bool=>Bool),
             Op::Not => signature!(Bool=>Bool),
-            Op::Print => signature!(Unknown=>),
-            Op::PrintStr => signature!(Unknown=>),
+            Op::PutChar => signature!(Int=>), // TODO put this back to Char after
+            // casting is invented
             Op::ReadLine => {
                 let layout_id = self.types.bytecode.get_list_layout_id();
                 signature!(=>Object(layout_id))

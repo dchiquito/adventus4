@@ -208,6 +208,10 @@
       "type": "STRING",
       "value": "/"
     },
+    "mod": {
+      "type": "STRING",
+      "value": "%"
+    },
     "eq": {
       "type": "STRING",
       "value": "=="
@@ -263,6 +267,10 @@
         {
           "type": "SYMBOL",
           "name": "div"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "mod"
         },
         {
           "type": "SYMBOL",

@@ -1,0 +1,29 @@
+def mod [
+  >$modulus
+  [[dup $modulus /] $modulus *] -
+]
+def print_int :(Int ->) [
+  dup 0 == if [
+    48 put_char
+    10 put_char
+    return
+  ]
+  dup 0 < if [
+    45 put_char # TODO use '-'
+    -1 *
+  ]
+  1 >$place
+  loop [
+    dup $place < if break
+    10 $place * >$place
+  ]
+  $place 10 / >$place # we have passed the correct place, go back one
+  loop [
+    dup $place / 48 + put_char
+    $place 1 == if break
+    $place %
+    $place 10 / >$place
+  ]
+  10 put_char
+  drop
+]

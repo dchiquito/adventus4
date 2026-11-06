@@ -103,7 +103,7 @@ struct StackFrame {
 
 pub trait IO {
     fn read_line(&mut self) -> Vec<u64>;
-    fn write(&mut self, data: &str);
+    fn put_char(&mut self, c: char);
 }
 
 #[derive(Default)]
@@ -118,8 +118,8 @@ impl IO for StdIO {
         buf.chars().map(|c| c as Value).collect()
     }
 
-    fn write(&mut self, data: &str) {
-        println!("{data}");
+    fn put_char(&mut self, c: char) {
+        print!("{c}");
     }
 }
 
@@ -165,9 +165,8 @@ impl IO for TestIO<'_> {
         self.input_buffer.read_line()
     }
 
-    fn write(&mut self, data: &str) {
-        self.output.push_str(data);
-        self.output.push('\n');
+    fn put_char(&mut self, c: char) {
+        self.output.push(c);
     }
 }
 
@@ -215,6 +214,7 @@ impl<T: IO> Iterator for VM<'_, T> {
             OpCode::Sub => Op::Sub,
             OpCode::Mul => Op::Mul,
             OpCode::Div => Op::Div,
+            OpCode::Mod => Op::Mod,
             OpCode::Eq => Op::Eq,
             OpCode::Ne => Op::Ne,
             OpCode::Gt => Op::Gt,
@@ -224,8 +224,7 @@ impl<T: IO> Iterator for VM<'_, T> {
             OpCode::And => Op::And,
             OpCode::Or => Op::Or,
             OpCode::Not => Op::Not,
-            OpCode::Print => Op::Print,
-            OpCode::PrintStr => Op::PrintStr,
+            OpCode::PutChar => Op::PutChar,
             OpCode::ReadLine => Op::ReadLine,
             OpCode::ObjectId => Op::Layout(LayoutId::new(self.next_word()?)),
             OpCode::Malloc => Op::Malloc(LayoutId::new(self.next_word()?)),
@@ -335,6 +334,7 @@ impl<'a, T: IO> VM<'a, T> {
             Op::Sub => self.op_sub()?,
             Op::Mul => self.op_mul()?,
             Op::Div => self.op_div()?,
+            Op::Mod => self.op_mod()?,
             Op::Eq => self.op_eq()?,
             Op::Ne => self.op_ne()?,
             Op::Gt => self.op_gt()?,
@@ -344,8 +344,7 @@ impl<'a, T: IO> VM<'a, T> {
             Op::And => self.op_and()?,
             Op::Or => self.op_or()?,
             Op::Not => self.op_not()?,
-            Op::Print => self.op_print()?,
-            Op::PrintStr => self.op_print_str()?,
+            Op::PutChar => self.op_put_char()?,
             Op::ReadLine => self.op_read_line()?,
             Op::Layout(layout_id) => self.op_layout(layout_id),
             Op::Malloc(layout_id) => self.op_malloc(layout_id)?,
@@ -519,6 +518,12 @@ impl<T: IO> VM<'_, T> {
         self.push((a / b) as Value);
         Ok(())
     }
+    fn op_mod(&mut self) -> Result<()> {
+        let b = self.pop_integer()?;
+        let a = self.pop_integer()?;
+        self.push((a % b) as Value);
+        Ok(())
+    }
     fn op_eq(&mut self) -> Result<()> {
         let b = self.pop_integer()?;
         let a = self.pop_integer()?;
@@ -683,23 +688,30 @@ impl<T: IO> VM<'_, T> {
         //     Value::LayoutId(id) => write!(w, "LayoutId({id})")?,
         //     Value::ClosureId(id) => write!(w, "ClosureDefId({id:?})")?,
         // }
-        todo!("do formatting of arbitrary values");
+        write!(w, "{value}")?;
         Ok(())
     }
-    fn op_print(&mut self) -> Result<()> {
+    fn op_put_char(&mut self) -> Result<()> {
         let value = self.pop()?;
-        let mut buf = String::new();
-        self._format_value(&mut buf, value).unwrap();
-        self.io.write(&buf);
+        let c =
+            char::from_u32(value as u32).unwrap_or_else(|| panic!("invalid char value {value}"));
+        self.io.put_char(c);
         Ok(())
     }
-    fn op_print_str(&mut self) -> Result<()> {
-        let value = self.pop()?;
-        let mut buf = String::new();
-        self._format_string(&mut buf, value).unwrap();
-        self.io.write(&buf);
-        Ok(())
-    }
+    // fn op_print(&mut self) -> Result<()> {
+    //     let value = self.pop()?;
+    //     let mut buf = String::new();
+    //     self._format_value(&mut buf, value).unwrap();
+    //     self.io.write(&buf);
+    //     Ok(())
+    // }
+    // fn op_print_str(&mut self) -> Result<()> {
+    //     let value = self.pop()?;
+    //     let mut buf = String::new();
+    //     self._format_string(&mut buf, value).unwrap();
+    //     self.io.write(&buf);
+    //     Ok(())
+    // }
     fn op_read_line(&mut self) -> Result<()> {
         let line = self.io.read_line();
         let len = line.len();
