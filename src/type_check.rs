@@ -67,6 +67,9 @@ impl Type {
                 types.manifest_generic(*left_gen_id, right.clone());
                 Ok(right.clone())
             }
+        } else if let Type::Generic(right_gen_id) = right {
+            types.manifest_generic(*right_gen_id, left.clone());
+            Ok(left.clone())
         } else {
             Err(Error::CannotUnite(left.clone(), right.clone()))
         }
