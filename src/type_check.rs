@@ -156,9 +156,8 @@ macro_rules! signature {
     };
 }
 impl Signature {
-    /// Create a new Signature representing the union of an initial block state
-    /// with a new one. Extend before appropriately, and return an error if after
-    /// is different.
+    /// Reconcile two signatures that should be the same, uniting their constituent
+    /// types.
     fn reconcile(types: &mut Types, left: &Signature, right: &Signature) -> Result<Signature> {
         trace!("hmmmmm {:?} :: {:?}", left, right);
         let before = {
@@ -176,15 +175,17 @@ impl Signature {
                 .collect::<Result<Vec<Type>>>()?
         };
         let after = {
-            if left.after.len() != right.after.len() {
-                Err(Error::CannotReconcile(left.clone(), right.clone()))?
+            let (shorter, longer) = if left.after.len() <= right.after.len() {
+                (&left.after, &right.after)
             } else {
-                left.after
-                    .iter()
-                    .zip(right.after.iter())
-                    .map(|(x, y)| Type::union(types, x, y))
-                    .collect::<Result<Vec<Type>>>()?
-            }
+                (&right.after, &left.after)
+            };
+            shorter
+                .iter()
+                .chain(std::iter::repeat(&Type::Unknown))
+                .zip(longer.iter())
+                .map(|(x, y)| Type::union(types, x, y))
+                .collect::<Result<Vec<Type>>>()?
         };
         Ok(Signature { before, after })
     }
