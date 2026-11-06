@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Write, ops::Range};
 
-use crate::type_check::{Signature, SpannedSignature};
+use crate::type_check::SpannedSignature;
 
 #[derive(Copy, Clone, Debug)]
 pub enum OpCode {

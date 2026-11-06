@@ -1,10 +1,7 @@
 use log::trace;
 
-use crate::{
-    bytecode::ClosureId,
-    source::{self, SourceViewer},
-};
-use std::{fmt::Write, io::BufRead, ops::Range, slice::Iter};
+use crate::{bytecode::ClosureId, source::SourceViewer};
+use std::{fmt::Write, io::BufRead, slice::Iter};
 
 use crate::bytecode::{
     BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpCode, PropId, Span, Terminator,

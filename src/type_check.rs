@@ -366,7 +366,7 @@ impl<'b> Types<'b> {
         SpannedSignature { signature, span }
     }
     fn chain_unspanned(&mut self, left: &SpannedSignature, right: &Signature) -> SpannedSignature {
-        let signature = self.chain(&left.signature, &right);
+        let signature = self.chain(&left.signature, right);
         let span = left.span.clone();
         SpannedSignature { signature, span }
     }
