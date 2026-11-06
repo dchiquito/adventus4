@@ -1,6 +1,9 @@
 use log::trace;
 
-use crate::{bytecode::ClosureId, source};
+use crate::{
+    bytecode::ClosureId,
+    source::{self, SourceViewer},
+};
 use std::{fmt::Write, io::BufRead, ops::Range, slice::Iter};
 
 use crate::bytecode::{
@@ -39,45 +42,20 @@ impl Error {
         self.kind.clone()
     }
     pub fn format(&self, f: &mut impl std::io::Write, bytecode: &ByteCode) -> std::io::Result<()> {
-        let Span {
-            source_id: id,
-            range,
-        } = self.span.clone();
-        let name = bytecode.source_map.get_source_name(id);
-        let source = source::read_source_file(name);
-        let line_number = self.get_line_number(&source);
-        let line_range = self.get_source_line_extents(&source);
-        let column_number = 1 + range.start - line_range.start;
+        let sv = SourceViewer::new(&bytecode.source_map);
+        let source = sv.get_source(&self.span);
+        let name = sv.get_source_name(&self.span);
+        let line_number = sv.get_line_number(&self.span);
+        let line_range = sv.get_source_line_extents(&self.span);
+        let column_number = 1 + self.span.range.start - line_range.start;
         writeln!(f, "Run time error: {:?}", self.kind)?;
         writeln!(
             f,
             "- {name}:{line_number}:{column_number}: {}",
-            &source[range]
+            &source[self.span.range.clone()]
         )?;
         writeln!(f, "{}", &source[line_range])?;
         Ok(())
-    }
-    fn get_source_line_extents(&self, source: &str) -> Range<usize> {
-        let range = &self.span.range;
-        let start_offset = source.as_bytes()[..range.start]
-            .iter()
-            .rev()
-            .position(|&c| c == b'\n')
-            .unwrap_or(range.start);
-        let end_offset = source.as_bytes()[range.end..]
-            .iter()
-            .position(|&c| c == b'\n')
-            .unwrap_or(source.len() - range.end);
-        (range.start - start_offset)..(range.end + end_offset)
-    }
-    fn get_line_number(&self, source: &str) -> usize {
-        let mut lines = 1;
-        for i in 0..self.span.range.start {
-            if source.as_bytes()[i] == b'\n' {
-                lines += 1;
-            }
-        }
-        lines
     }
 }
 

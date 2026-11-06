@@ -2,8 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use log::{debug, trace};
 
-use crate::bytecode::{
-    BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, PropId, Terminator,
+use crate::{
+    bytecode::{
+        BlockId, ByteCode, ClosureId, DefId, LayoutId, LocalId, Op, PropId, Span, Terminator,
+    },
+    source::SourceViewer,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -43,15 +46,15 @@ pub enum Type {
     Unknown,
 }
 impl Type {
-    fn union(&self, other: &Type) -> Result<Type> {
-        if self == other {
-            Ok(self.clone())
-        } else if self == &Type::Unknown {
-            Ok(other.clone())
-        } else if other == &Type::Unknown {
-            Ok(self.clone())
+    fn union(types: &mut Types, left: &Type, right: &Type) -> Result<Type> {
+        if left == right {
+            Ok(left.clone())
+        } else if left == &Type::Unknown {
+            Ok(right.clone())
+        } else if right == &Type::Unknown {
+            Ok(left.clone())
         } else {
-            Err(Error::CannotUnite(self.clone(), other.clone()))
+            Err(Error::CannotUnite(left.clone(), right.clone()))
         }
     }
 }
@@ -142,30 +145,30 @@ impl Signature {
     /// Create a new Signature representing the union of an initial block state
     /// with a new one. Extend before appropriately, and return an error if after
     /// is different.
-    fn reconcile(&self, other: &Signature) -> Result<Signature> {
-        trace!("hmmmmm {:?} :: {:?}", self, other);
+    fn reconcile(types: &mut Types, left: &Signature, right: &Signature) -> Result<Signature> {
+        trace!("hmmmmm {:?} :: {:?}", left, right);
         let before = {
-            let (shorter, longer) = if self.before.len() <= other.before.len() {
-                (&self.before, &other.before)
+            let (shorter, longer) = if left.before.len() <= right.before.len() {
+                (&left.before, &right.before)
             } else {
-                (&other.before, &self.before)
+                (&right.before, &left.before)
             };
             shorter
                 .iter()
                 .rev()
                 .chain(std::iter::repeat(&Type::Unknown))
                 .zip(longer.iter().rev())
-                .map(|(x, y)| x.union(y))
+                .map(|(x, y)| Type::union(types, x, y))
                 .collect::<Result<Vec<Type>>>()?
         };
         let after = {
-            if self.after.len() != other.after.len() {
-                Err(Error::CannotReconcile(self.clone(), other.clone()))?
+            if left.after.len() != right.after.len() {
+                Err(Error::CannotReconcile(left.clone(), right.clone()))?
             } else {
-                self.after
+                left.after
                     .iter()
-                    .zip(other.after.iter())
-                    .map(|(x, y)| x.union(y))
+                    .zip(right.after.iter())
+                    .map(|(x, y)| Type::union(types, x, y))
                     .collect::<Result<Vec<Type>>>()?
             }
         };
@@ -185,10 +188,27 @@ impl std::fmt::Debug for Signature {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct SpannedSignature {
+    pub signature: Signature,
+    pub span: Option<Span>,
+}
+impl SpannedSignature {
+    /// Create a new Signature representing the union of an initial block state
+    /// with a new one. Extend before appropriately, and return an error if after
+    /// is different.
+    fn reconcile(types: &mut Types, left: &Self, other: &Self) -> Result<Self> {
+        trace!("Prepare to reconcile {left:?} with {other:?}");
+        let signature = Signature::reconcile(types, &left.signature, &other.signature)?;
+        let span = Span::unite(&left.span, &other.span);
+        Ok(Self { signature, span })
+    }
+}
+
 #[derive(Debug)]
 pub struct Types<'b> {
     bytecode: &'b ByteCode,
-    def_types: HashMap<(DefId, Vec<Signature>), Signature>,
+    def_types: HashMap<(DefId, Vec<Signature>), SpannedSignature>,
     current_generic: GenericId,
     generics: HashMap<GenericId, Type>,
 }
@@ -289,7 +309,11 @@ impl<'b> Types<'b> {
         }
     }
     /// Get the cached type of a def, or infer it if it is not yet cached.
-    fn type_of_def(&mut self, def_id: DefId, closures: Vec<Signature>) -> Result<&Signature> {
+    fn type_of_def(
+        &mut self,
+        def_id: DefId,
+        closures: Vec<Signature>,
+    ) -> Result<&SpannedSignature> {
         // First, check the precomputed cache
         if self.def_types.contains_key(&(def_id, closures.clone())) {
             Ok(self.def_types.get(&(def_id, closures)).unwrap())
@@ -314,6 +338,20 @@ impl<'b> Types<'b> {
         let g = self.current_generic;
         self.current_generic = self.current_generic.incr();
         g
+    }
+    fn chain_spanned(
+        &mut self,
+        left: &SpannedSignature,
+        right: &SpannedSignature,
+    ) -> SpannedSignature {
+        let signature = self.chain(&left.signature, &right.signature);
+        let span = Span::unite(&left.span, &right.span);
+        SpannedSignature { signature, span }
+    }
+    fn chain_unspanned(&mut self, left: &SpannedSignature, right: &Signature) -> SpannedSignature {
+        let signature = self.chain(&left.signature, &right);
+        let span = left.span.clone();
+        SpannedSignature { signature, span }
     }
     fn chain(&mut self, left: &Signature, right: &Signature) -> Signature {
         for (lhs, rhs) in left.after.iter().rev().zip(right.before.iter().rev()) {
@@ -374,12 +412,12 @@ impl<'b> Types<'b> {
 struct DefInferer<'a, 'b> {
     types: &'a mut Types<'b>,
     closures: Vec<Signature>,
-    blocks: HashMap<BlockId, Signature>,
-    current_type: Signature,
-    return_type: Option<Signature>,
+    blocks: HashMap<BlockId, SpannedSignature>,
+    current_type: SpannedSignature,
+    return_type: Option<SpannedSignature>,
 }
 impl<'a, 'b> DefInferer<'a, 'b> {
-    fn infer(types: &'a mut Types<'b>, def_id: DefId) -> Result<Option<Signature>> {
+    fn infer(types: &'a mut Types<'b>, def_id: DefId) -> Result<Option<SpannedSignature>> {
         trace!("BEGIN INFERENCE OF {def_id:?}");
         let def = types.bytecode.get_def(def_id);
         if def.closure_count == 0 {
@@ -392,13 +430,16 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         types: &'a mut Types<'b>,
         def_id: DefId,
         closures: Vec<Signature>,
-    ) -> Result<Signature> {
+    ) -> Result<SpannedSignature> {
         Self::new(types, closures).infer_def(def_id)
     }
     fn new(types: &'a mut Types<'b>, closures: Vec<Signature>) -> Self {
         let blocks = Default::default();
         let return_type = None;
-        let current_type = signature!(=>);
+        let current_type = SpannedSignature {
+            signature: signature!(=>),
+            span: None,
+        };
         Self {
             types,
             closures,
@@ -407,7 +448,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             return_type,
         }
     }
-    fn infer_def(mut self, def_id: DefId) -> Result<Signature> {
+    fn infer_def(mut self, def_id: DefId) -> Result<SpannedSignature> {
         let name = self.types.bytecode.name_of_def(def_id);
         let def = self.types.bytecode.get_def(def_id);
         debug!(
@@ -425,29 +466,48 @@ impl<'a, 'b> DefInferer<'a, 'b> {
         trace!("Inferring block {block_id:?}");
         self.blocks.insert(block_id, self.current_type.clone());
         let block = self.types.bytecode.get_block(block_id);
-        for op in block.iter() {
-            let sig = self.infer_op(op)?;
-            trace!("Inferred {op:?} to be {sig:?}");
-            self.current_type = self.types.chain(&self.current_type, &sig);
+        // for op in block.iter() {
+        for (op, span) in self.types.bytecode.iter_with_source(block_id) {
+            trace!("span: {span:?}");
+            let signature = self.infer_op(op)?;
+            let spanned_signature = SpannedSignature {
+                signature,
+                span: Some(span),
+            };
+            trace!("Inferred {op:?} to be {spanned_signature:?}");
+            self.current_type = self
+                .types
+                .chain_spanned(&self.current_type, &spanned_signature);
         }
         match block.terminator {
             Terminator::Return => {
                 if let Some(existing) = &self.return_type {
-                    self.return_type = Some(self.current_type.reconcile(existing)?);
+                    self.return_type = Some(SpannedSignature::reconcile(
+                        self.types,
+                        &self.current_type,
+                        existing,
+                    )?);
                 } else {
                     self.return_type = Some(self.current_type.clone());
                 }
             }
             Terminator::ReturnClosure => {
                 if let Some(existing) = &self.return_type {
-                    self.current_type = self.current_type.reconcile(existing)?;
+                    // self.current_type = self.current_type.reconcile(existing)?;
+                    self.current_type =
+                        SpannedSignature::reconcile(self.types, &self.current_type, existing)?;
                 } else {
                     self.current_type = self.current_type.clone();
                 }
             }
             Terminator::GoTo(block_id) => {
                 if let Some(previous_type) = self.blocks.get(&block_id) {
-                    self.current_type = self.current_type.reconcile(previous_type)?;
+                    trace!("C");
+                    let sv = SourceViewer::new(&self.types.bytecode.source_map);
+                    trace!("{}", sv.get_str(self.current_type.span.as_ref().unwrap()));
+                    trace!("{}", sv.get_str(previous_type.span.as_ref().unwrap()));
+                    self.current_type =
+                        SpannedSignature::reconcile(self.types, &self.current_type, previous_type)?;
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
                     self.walk_block(block_id)?;
@@ -455,10 +515,13 @@ impl<'a, 'b> DefInferer<'a, 'b> {
             }
             Terminator::GoToIf { then, or_else } => {
                 // Consume the boolean
-                self.current_type = self.types.chain(&self.current_type, &signature!(Bool=>));
+                self.current_type = self
+                    .types
+                    .chain_unspanned(&self.current_type, &signature!(Bool=>));
                 let mut then_type = self.current_type.clone();
                 if let Some(previous_type) = self.blocks.get(&then) {
-                    self.current_type = self.current_type.reconcile(previous_type)?;
+                    self.current_type =
+                        SpannedSignature::reconcile(self.types, &self.current_type, previous_type)?;
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
                     self.walk_block(then)?;
@@ -466,13 +529,15 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 // Restore self.current_type and save the type of the then branch
                 std::mem::swap(&mut self.current_type, &mut then_type);
                 if let Some(previous_type) = self.blocks.get(&or_else) {
-                    self.current_type = self.current_type.reconcile(previous_type)?;
+                    self.current_type =
+                        SpannedSignature::reconcile(self.types, &self.current_type, previous_type)?;
                     self.blocks.insert(block_id, self.current_type.clone());
                 } else {
                     self.walk_block(or_else)?;
                 }
                 // Verify then and or_else branches have the same type
-                self.current_type = self.current_type.reconcile(&then_type)?;
+                self.current_type =
+                    SpannedSignature::reconcile(self.types, &self.current_type, &then_type)?;
             }
         }
         Ok(())
@@ -488,6 +553,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                 trace!("It has {} closures", def.closure_count);
                 let before: Vec<Type> = self
                     .current_type
+                    .signature
                     .after
                     .iter()
                     .rev()
@@ -504,13 +570,16 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                             let closure = self.types.bytecode.get_closure(*closure_id);
                             let block_id = closure.block_id;
                             // Save the current_type to restore later
-                            let mut closure_type = signature!(=>);
+                            let mut closure_type = SpannedSignature {
+                                signature: signature!(=>),
+                                span: None,
+                            };
                             std::mem::swap(&mut self.current_type, &mut closure_type);
                             self.walk_block(block_id)?;
                             // Swap current_type to restore it and retrieve the
                             // closure_type
                             std::mem::swap(&mut self.current_type, &mut closure_type);
-                            Ok(closure_type)
+                            Ok(closure_type.signature)
                         } else {
                             unreachable!("compilation error: not enough closures")
                         }
@@ -522,7 +591,7 @@ impl<'a, 'b> DefInferer<'a, 'b> {
                     after: vec![],
                 };
                 let def_type = self.types.type_of_def(def_id, closures)?.clone();
-                self.types.chain(&closure_consumer, &def_type)
+                self.types.chain(&closure_consumer, &def_type.signature)
             }
             Op::CallClosure(closure_id) => {
                 let idx = closure_id.to_index();
@@ -624,7 +693,11 @@ mod test {
             let _ = types.infer();
             bytecode
                 .iter_def_ids()
-                .map(|def_id| DefInferer::infer(&mut types, def_id).map(Option::unwrap))
+                .map(|def_id| {
+                    DefInferer::infer(&mut types, def_id)
+                        .map(Option::unwrap)
+                        .map(|spanned_signature| spanned_signature.signature)
+                })
                 .collect::<Vec<Result<Signature>>>()
         }};
     }
@@ -635,7 +708,12 @@ mod test {
             types.infer().expect("no errors");
             bytecode
                 .iter_def_ids()
-                .map(|def_id| DefInferer::infer(&mut types, def_id).unwrap().unwrap())
+                .map(|def_id| {
+                    DefInferer::infer(&mut types, def_id)
+                        .unwrap()
+                        .unwrap()
+                        .signature
+                })
                 .collect::<Vec<Signature>>()
         }};
     }

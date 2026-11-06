@@ -13,7 +13,7 @@ use crate::{
         BlockId, ByteCode, ClosureVar, DefId, LayoutId, LocalId, Op, OpSize, PropId, SourceId,
         Terminator,
     },
-    type_check::{BuiltinType, Signature, Type},
+    type_check::{BuiltinType, Signature, SpannedSignature, Type},
     vm::{TestIO, VM},
 };
 
@@ -206,7 +206,7 @@ impl<'s> Compiler<'s> {
             def_compiler.compile_def(cursor, block_id);
         }
     }
-    fn compile_signature(&mut self, cursor: &mut TreeCursor) -> Signature {
+    fn compile_signature(&mut self, cursor: &mut TreeCursor) -> SpannedSignature {
         assert_node_id!(cursor, SIGNATURE, "signature");
         goto_first_child!(cursor);
         goto_next_sibling!(cursor); // (
@@ -222,7 +222,11 @@ impl<'s> Compiler<'s> {
             goto_next_sibling!(cursor);
         }
         goto_parent!(cursor);
-        Signature::new(before, after)
+        let signature = Signature::new(before, after);
+        SpannedSignature {
+            signature,
+            span: None, // TODO populate this
+        }
     }
     fn compile_type(&mut self, cursor: &mut TreeCursor) -> Type {
         assert_node_id!(cursor, TYPE, "type");
@@ -314,13 +318,13 @@ impl<'d, 'c, 's> BlockCompiler<'d, 'c, 's> {
         let bytecode = &mut self.def_compiler.compiler.bytecode;
         match bytecode.get_block_mut(self.block_id).push(op) {
             OpSize::One => {}
-            OpSize::Two => bytecode.source_map.push(
+            OpSize::Two => bytecode.source_map.push_span(
                 self.def_compiler.compiler.source_id,
                 self.block_id,
                 cursor.node().byte_range(),
             ),
         }
-        bytecode.source_map.push(
+        bytecode.source_map.push_span(
             self.def_compiler.compiler.source_id,
             self.block_id,
             cursor.node().byte_range(),

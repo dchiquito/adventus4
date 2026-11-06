@@ -1,4 +1,6 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, ops::Range, path::PathBuf};
+
+use crate::bytecode::{SourceId, SourceMap, Span};
 
 const BOOL_ADV: &str = include_str!("../lib/bool.adv");
 const RANGE_ADV: &str = include_str!("../lib/range.adv");
@@ -16,6 +18,64 @@ pub fn read_source_file(source_name: &str) -> String {
         }
     } else {
         std::fs::read_to_string(&path).unwrap()
+    }
+}
+
+pub struct SourceViewer {
+    source_names: HashMap<SourceId, String>,
+    sources: HashMap<SourceId, String>,
+}
+impl SourceViewer {
+    pub fn new(source_map: &SourceMap) -> Self {
+        let source_names = source_map
+            .iter_source_names()
+            .map(|(id, name)| (id, name.clone()))
+            .collect();
+        let sources = source_map
+            .iter_source_names()
+            .map(|(id, name)| (id, read_source_file(name)))
+            .collect();
+        Self {
+            source_names,
+            sources,
+        }
+    }
+    pub fn get_source_name(&self, span: &Span) -> &str {
+        self.source_names
+            .get(&span.source_id)
+            .unwrap_or_else(|| panic!("unknown {:?}", span.source_id))
+    }
+    pub fn get_source(&self, span: &Span) -> &str {
+        self.sources
+            .get(&span.source_id)
+            .unwrap_or_else(|| panic!("unknown {:?}", span.source_id))
+    }
+    pub fn get_str(&self, span: &Span) -> &str {
+        &self.get_source(span)[span.range.clone()]
+    }
+    pub fn get_source_line_extents(&self, span: &Span) -> Range<usize> {
+        let range = span.range.clone();
+        let source = self.get_source(span);
+        let start_offset = source.as_bytes()[..range.start]
+            .iter()
+            .rev()
+            .position(|&c| c == b'\n')
+            .unwrap_or(range.start);
+        let end_offset = source.as_bytes()[range.end..]
+            .iter()
+            .position(|&c| c == b'\n')
+            .unwrap_or(source.len() - range.end);
+        (range.start - start_offset)..(range.end + end_offset)
+    }
+    pub fn get_line_number(&self, span: &Span) -> usize {
+        let source = self.get_source(span);
+        let mut lines = 1;
+        for i in 0..span.range.start {
+            if source.as_bytes()[i] == b'\n' {
+                lines += 1;
+            }
+        }
+        lines
     }
 }
 

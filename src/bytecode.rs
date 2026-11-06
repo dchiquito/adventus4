@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Write, ops::Range};
 
-use crate::type_check::Signature;
+use crate::type_check::{Signature, SpannedSignature};
 
 #[derive(Copy, Clone, Debug)]
 pub enum OpCode {
@@ -363,7 +363,7 @@ pub struct Definition {
     pub block_id: BlockId,
     local_count: usize,
     pub closure_count: usize,
-    pub declared_type: Option<Signature>,
+    pub declared_type: Option<SpannedSignature>,
 }
 impl Definition {
     pub fn new(block_id: BlockId, closure_count: usize) -> Self {
@@ -397,13 +397,35 @@ impl Closure {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct SourceId(usize);
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Span {
     pub source_id: SourceId,
     pub range: Range<usize>,
+}
+
+impl Span {
+    pub fn union(&self, other: &Self) -> Self {
+        assert_eq!(self.source_id, other.source_id);
+        let source_id = self.source_id;
+        let start = self.range.start.min(other.range.start);
+        let end = self.range.end.max(other.range.end);
+        let range = start..end;
+        Self { source_id, range }
+    }
+    pub fn unite(left: &Option<Self>, right: &Option<Self>) -> Option<Self> {
+        if let Some(left_span) = left {
+            if let Some(right_span) = right {
+                Some(left_span.union(right_span))
+            } else {
+                Some(left_span.clone())
+            }
+        } else {
+            right.clone()
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -417,10 +439,13 @@ impl SourceMap {
         self.source_names.push(source_name.to_string());
         source_id
     }
-    pub fn push(&mut self, source_id: SourceId, block_id: BlockId, range: Range<usize>) {
+    fn new_block(&mut self, block_id: BlockId) {
+        self.map.insert(block_id, vec![]);
+    }
+    pub fn push_span(&mut self, source_id: SourceId, block_id: BlockId, range: Range<usize>) {
         self.map
-            .entry(block_id)
-            .or_default()
+            .get_mut(&block_id)
+            .unwrap_or_else(|| panic!("no source map for {block_id:?}"))
             .push(Span { source_id, range });
     }
     pub fn get(&self, block_id: BlockId, index: usize) -> Span {
@@ -428,6 +453,12 @@ impl SourceMap {
     }
     pub fn get_source_name(&self, source_id: SourceId) -> &str {
         &self.source_names[source_id.0]
+    }
+    pub fn iter_source_names(&self) -> impl Iterator<Item = (SourceId, &String)> {
+        self.source_names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (SourceId(i), n))
     }
 }
 
@@ -448,6 +479,7 @@ impl ByteCode {
     pub fn new_block(&mut self) -> BlockId {
         let block_id = BlockId::new(self.blocks.len() as u64);
         self.blocks.push(Block::default());
+        self.source_map.new_block(block_id);
         block_id
     }
     pub fn get_block(&self, block_id: BlockId) -> &Block {
@@ -455,6 +487,15 @@ impl ByteCode {
     }
     pub fn get_block_mut(&mut self, block_id: BlockId) -> &mut Block {
         &mut self.blocks[block_id.0 as usize]
+    }
+    pub fn iter_with_source(&self, block_id: BlockId) -> impl Iterator<Item = (Op, Span)> {
+        let block = self.get_block(block_id);
+        let spans = self
+            .source_map
+            .map
+            .get(&block_id)
+            .unwrap_or_else(|| panic!("no source for {block_id:?}"));
+        block.iter().zip(spans.iter()).map(|(a, b)| (a, b.clone()))
     }
     pub fn new_def(&mut self, block_id: BlockId, macro_vars_size: usize) -> DefId {
         let def_id = DefId::new(self.defs.len() as u64);
